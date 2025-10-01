@@ -141,3 +141,4 @@ works_dirs/*
 # torch hipify generated files
 *_hip.*
 *.hip
+pretrained/*.pth
