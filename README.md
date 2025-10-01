@@ -16,7 +16,7 @@ git clone https://github.com/mit-han-lab/bevfusion.git
 cd bevfusion
 
 # Install dependencies
-pip install -r requirements.txt
+#pip install -r requirements.txt
 python setup.py develop
 ```
 
@@ -34,7 +34,7 @@ python setup.py develop
 ```bash
 # Convert Waymo data (full dataset)
 python tools/create_data.py waymo \
-    --root-path data/waymo/raw \
+    --root-path data/waymo/ \
     --out-dir data/waymo/Waymo_processed \
     --extra-tag waymo \
     --version full
@@ -55,7 +55,7 @@ data/waymo/
 │   ├── waymo_infos_val.pkl
 │   ├── waymo_infos_test.pkl
 │   └── waymo_dbinfos_train.pkl
-└── raw/
+└── Waymo_mini/
     ├── training/
     ├── validation/
     └── testing/
