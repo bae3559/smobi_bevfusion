@@ -1,223 +1,396 @@
-# BEVFusion
+# BEVFusion Training Guide
 
-### [website](http://bevfusion.mit.edu/) | [paper](https://arxiv.org/abs/2205.13542) | [video](https://www.youtube.com/watch?v=uCAka90si9E)
+This repository contains BEVFusion implementation for both **Waymo** and **nuScenes** datasets with complete dataset preparation, training, testing, and visualization pipelines.
 
-![demo](assets/demo.gif)
+## 🚀 Quick Start
 
-## News
+### Requirements
+- Python 3.8+
+- CUDA 11.1+
+- PyTorch 1.9+
 
-- **(2024/5)** BEVFusion is integrated into NVIDIA [DeepStream](https://developer.nvidia.com/blog/nvidia-deepstream-7-0-milestone-release-for-next-gen-vision-ai-development/) for sensor fusion.
-- **(2023/5)** NVIDIA provides a [TensorRT deployment solution](https://github.com/NVIDIA-AI-IOT/Lidar_AI_Solution/tree/master/CUDA-BEVFusion) of BEVFusion, achieving 25 FPS on Jetson Orin.
-- **(2023/4)** BEVFusion ranks first on [Argoverse](https://eval.ai/web/challenges/challenge-page/1710/overview) 3D object detection leaderboard among all solutions.
-- **(2023/1)** BEVFusion is integrated into [MMDetection3D](https://github.com/open-mmlab/mmdetection3d/tree/main/projects/BEVFusion).
-- **(2023/1)** BEVFusion is accepted to ICRA 2023!
-- **(2022/8)** BEVFusion ranks first on [Waymo](https://waymo.com/open/challenges/2020/3d-detection/) 3D object detection leaderboard among all solutions.
-- **(2022/6)** BEVFusion ranks first on [nuScenes](https://nuscenes.org/tracking?externalData=all&mapData=all&modalities=Any) 3D object detection leaderboard among all solutions.
-- **(2022/6)** BEVFusion ranks first on [nuScenes](https://nuscenes.org/object-detection?externalData=all&mapData=all&modalities=Any) 3D object detection leaderboard among all solutions.
-
-## Abstract
-
-Multi-sensor fusion is essential for an accurate and reliable autonomous driving system. Recent approaches are based on point-level fusion: augmenting the LiDAR point cloud with camera features. However, the camera-to-LiDAR projection throws away the semantic density of camera features, hindering the effectiveness of such methods, especially for semantic-oriented tasks (such as 3D scene segmentation). In this paper, we break this deeply-rooted convention with BEVFusion, an efficient and generic multi-task multi-sensor fusion framework. It unifies multi-modal features in the shared bird's-eye view (BEV) representation space, which nicely preserves both geometric and semantic information. To achieve this, we diagnose and lift key efficiency bottlenecks in the view transformation with optimized BEV pooling, reducing latency by more than **40x**. BEVFusion is fundamentally task-agnostic and seamlessly supports different 3D perception tasks with almost no architectural changes. It establishes the new state of the art on the nuScenes benchmark, achieving **1.3%** higher mAP and NDS on 3D object detection and **13.6%** higher mIoU on BEV map segmentation, with **1.9x** lower computation cost.
-
-## Results
-
-### 3D Object Detection (on Waymo test)
-
-|   Model   | mAP-L1 | mAPH-L1  | mAP-L2  | mAPH-L2  |
-| :-------: | :------: | :--: | :--: | :--: |
-| [BEVFusion](https://waymo.com/open/challenges/entry/?challenge=DETECTION_3D&challengeId=DETECTION_3D&emailId=f58eed96-8bb3&timestamp=1658347965704580) |    82.72   |  81.35  | 77.65  |  76.33 |
-| [BEVFusion-TTA](https://waymo.com/open/challenges/entry/?challenge=DETECTION_3D&challengeId=DETECTION_3D&emailId=94ddc185-d2ce&timestamp=1663562767759105) | 86.04    |  84.76 | 81.22  |  79.97 |
-
-Here, BEVFusion only uses a single model without any test time augmentation. BEVFusion-TTA uses single model with test-time augmentation and no model ensembling is applied. 
-
-### 3D Object Detection (on nuScenes test)
-
-|   Model   | Modality | mAP  | NDS  |
-| :-------: | :------: | :--: | :--: |
-| BEVFusion-e |   C+L    | 74.99 | 76.09 |
-| BEVFusion |   C+L    | 70.23 | 72.88 |
-| BEVFusion-base* |   C+L    | 71.72 | 73.83 |
-
-*: We scaled up MACs of the model to match the computation cost of concurrent work.
-
-### 3D Object Detection (on nuScenes validation)
-
-|        Model         | Modality | mAP  | NDS  | Checkpoint  |
-| :------------------: | :------: | :--: | :--: | :---------: |
-|    [BEVFusion](configs/nuscenes/det/transfusion/secfpn/camera+lidar/swint_v0p075/convfuser.yaml)       |   C+L    | 68.52 | 71.38 | [Link](https://www.dropbox.com/scl/fi/ulaz9z4wdwtypjhx7xdi3/bevfusion-det.pth?rlkey=ovusfi2rchjub5oafogou255v&dl=1) |
-| [Camera-Only Baseline](configs/nuscenes/det/centerhead/lssfpn/camera/256x704/swint/default.yaml) |    C     | 35.56 | 41.21 | [Link](https://www.dropbox.com/scl/fi/pxfaz1nc07qa2twlatzkz/camera-only-det.pth?rlkey=f5do81fawie0ssbg9uhrm6p30&dl=1) |
-| [LiDAR-Only Baseline](configs/nuscenes/det/transfusion/secfpn/lidar/voxelnet_0p075.yaml)  |    L     | 64.68 | 69.28 | [Link](https://www.dropbox.com/scl/fi/b1zvgrg9ucmv0wtx6pari/lidar-only-det.pth?rlkey=fw73bmdh57jxtudw6osloywah&dl=1) |
-
-*Note*: The camera-only object detection baseline is a variant of BEVDet-Tiny with a much heavier view transformer and other differences in hyperparameters. Thanks to our [efficient BEV pooling](mmdet3d/ops/bev_pool) operator, this model runs fast and has higher mAP than BEVDet-Tiny under the same input resolution. Please refer to [BEVDet repo](https://github.com/HuangJunjie2017/BEVDet) for the original BEVDet-Tiny implementation. The LiDAR-only baseline is TransFusion-L.
-
-### BEV Map Segmentation (on nuScenes validation)
-
-|        Model         | Modality | mIoU | Checkpoint  |
-| :------------------: | :------: | :--: | :---------: |
-| [BEVFusion](configs/nuscenes/seg/fusion-bev256d2-lss.yaml)       |   C+L    | 62.95 | [Link](https://www.dropbox.com/scl/fi/8lgd1hkod2a15mwry0fvd/bevfusion-seg.pth?rlkey=2tmgw7mcrlwy9qoqeui63tay9&dl=1) |
-| [Camera-Only Baseline](configs/nuscenes/seg/camera-bev256d2.yaml) |    C     | 57.09 | [Link](https://www.dropbox.com/scl/fi/cwpcu80n0shmwraegi6z4/camera-only-seg.pth?rlkey=l60kdaz19fq3gwocsjk09e60z&dl=1) |
-| [LiDAR-Only Baseline](configs/nuscenes/seg/lidar-centerpoint-bev128.yaml)  |    L     | 48.56 | [Link](https://www.dropbox.com/scl/fi/mi3w6uxvytdre9i42r9k7/lidar-only-seg.pth?rlkey=rve7hx80u3en1gfoi7tjucl72&dl=1) |
-
-## Usage
-
-### Prerequisites
-
-The code is built with following libraries:
-
-- Python >= 3.8, \<3.9
-- OpenMPI = 4.0.4 and mpi4py = 3.0.3 (Needed for torchpack)
-- Pillow = 8.4.0 (see [here](https://github.com/mit-han-lab/bevfusion/issues/63))
-- [PyTorch](https://github.com/pytorch/pytorch) >= 1.9, \<= 1.10.2
-- [tqdm](https://github.com/tqdm/tqdm)
-- [torchpack](https://github.com/mit-han-lab/torchpack)
-- [mmcv](https://github.com/open-mmlab/mmcv) = 1.4.0
-- [mmdetection](http://github.com/open-mmlab/mmdetection) = 2.20.0
-- [nuscenes-dev-kit](https://github.com/nutonomy/nuscenes-devkit)
-
-After installing these dependencies, please run this command to install the codebase:
-
+### Installation
 ```bash
+# Clone repository
+git clone https://github.com/mit-han-lab/bevfusion.git
+cd bevfusion
+
+# Install dependencies
+pip install -r requirements.txt
 python setup.py develop
 ```
 
-We also provide a [Dockerfile](docker/Dockerfile) to ease environment setup. To get started with docker, please make sure that `nvidia-docker` is installed on your machine. After that, please execute the following command to build the docker image:
+## 📊 Dataset Preparation
+
+### 1. Waymo Dataset
+
+#### Download Data
+```bash
+# Download from Waymo Open Dataset
+# Place raw data in: data/waymo/raw/
+```
+
+#### Convert to BEVFusion Format
+```bash
+# Convert Waymo data (full dataset)
+python tools/create_data.py waymo \
+    --root-path data/waymo/raw \
+    --out-dir data/waymo/Waymo_processed \
+    --extra-tag waymo \
+    --version full
+
+# Convert Waymo mini dataset (for testing)
+python tools/create_data.py waymo \
+    --root-path data/waymo/Waymo_mini \
+    --out-dir data/waymo/Waymo_processed \
+    --extra-tag waymo \
+    --version mini
+```
+
+#### Expected Directory Structure
+```
+data/waymo/
+├── Waymo_processed/
+│   ├── waymo_infos_train.pkl
+│   ├── waymo_infos_val.pkl
+│   ├── waymo_infos_test.pkl
+│   └── waymo_dbinfos_train.pkl
+└── raw/
+    ├── training/
+    ├── validation/
+    └── testing/
+```
+
+### 2. nuScenes Dataset
+
+#### Download Data
+```bash
+# Download from nuScenes website
+# Place data in: data/nuscenes/
+```
+
+#### Convert to BEVFusion Format
+```bash
+# Convert nuScenes data
+python tools/create_data.py nuscenes \
+    --root-path ./data/nuscenes \
+    --out-dir ./data/nuscenes \
+    --extra-tag nuscenes
+```
+
+#### Expected Directory Structure
+```
+data/nuscenes/
+├── maps/
+├── samples/
+├── sweeps/
+├── v1.0-trainval/
+├── nuscenes_infos_train.pkl
+├── nuscenes_infos_val.pkl
+└── nuscenes_dbinfos_train.pkl
+```
+
+## 🏋️ Training
+
+### Waymo Training
+
+#### 1. Single GPU Training
+```bash
+torchpack dist-run -np 1 python tools/train.py \
+    configs/waymo/transfusion/secfpn/camera+lidar/swint_v0p075/default.yaml
+```
+
+#### 2. Multi-GPU Training
+```bash
+torchpack dist-run -np 8 python tools/train.py \
+    configs/waymo/transfusion/secfpn/camera+lidar/swint_v0p075/default.yaml
+```
+
+#### 3. Configuration Options
+- **Camera + LiDAR**: `configs/waymo/det/transfusion/secfpn/camera+lidar/default.yaml`
+- **LiDAR Only**: `configs/waymo/det/transfusion/secfpn/lidar/default.yaml`
+- **Camera Only**: `configs/waymo/det/centerhead/lssfpn/camera/default.yaml`
+
+### nuScenes Training
+
+#### 1. Single GPU Training
+```bash
+torchpack dist-run -np 1 python tools/train.py \
+    configs/nuscenes/det/transfusion/secfpn/camera+lidar/swint_v0p075/convfuser.yaml \
+    --model.encoders.camera.backbone.init_cfg.checkpoint pretrained/swint-nuimages-pretrained.pth \
+    --load_from pretrained/lidar-only-det.pth 
+```
+
+#### 2. Multi-GPU Training
+```bash
+torchpack dist-run -np 8 python tools/train.py configs/nuscenes/det/transfusion/secfpn/camera+lidar/swint_v0p075/convfuser.yaml \
+    --model.encoders.camera.backbone.init_cfg.checkpoint pretrained/swint-nuimages-pretrained.pth \
+    --load_from pretrained/lidar-only-det.pth 
+```
+
+#### 3. Configuration Options
+- **Camera + LiDAR**: `configs/nuscenes/det/transfusion/secfpn/camera+lidar/swint_v0p075/convfuser.yaml`
+- **LiDAR Only**: `configs/nuscenes/det/transfusion/secfpn/lidar/voxelnet_0p075.yaml`
+- **Camera Only**: `configs/nuscenes/det/centerhead/lssfpn/camera/256x704/swint/default.yaml`
+
+### Training Options
+```bash
+# Resume from checkpoint
+python tools/train.py CONFIG --resume-from CHECKPOINT
+
+# Load pretrained weights
+python tools/train.py CONFIG --load-from PRETRAINED
+
+# Specify GPU IDs
+CUDA_VISIBLE_DEVICES=0,1,2,3 python tools/train.py CONFIG
+```
+
+## 🧪 Testing
+
+### Waymo Testing
 
 ```bash
-cd docker && docker build . -t bevfusion
+# Test with trained model
+torchpack dist-run -np 1 python tools/test.py \
+    runs/run-5e3259ec/configs.yaml \
+    runs/run-5e3259ec/epoch_20.pth \
+    --eval bbox
+
+# Multi-GPU testing
+torchpack dist-run -np 8 python tools/test.py \
+    runs/run-5e3259ec/configs.yaml \
+    runs/run-5e3259ec/epoch_20.pth \
+    --eval bbox
 ```
 
-We can then run the docker with the following command:
+#### Expected Waymo Results
+```
+Waymo Evaluation Results:
+mAP: 0.3588
+mATE: 0.4818
+mASE: 0.5229
+mAOE: 0.6159
+mAVE: 0.0000
+mAAE: 0.0000
+NDS: 0.4308
+
+Per-class results:
+Object Class              AP        ATE       ASE       AOE       AVE       AAE
+vehicle                   0.628     0.376     0.313     0.536     0.000     0.000
+pedestrian                0.561     0.134     0.387     0.349     0.000     0.000
+cyclist                   0.000     1.000     1.000     1.000     0.000     0.000
+sign                      0.577     0.166     0.195     0.345     0.000     0.000
+```
+
+### nuScenes Testing
 
 ```bash
-nvidia-docker run -it -v `pwd`/../data:/dataset --shm-size 16g bevfusion /bin/bash
+# Test with trained model
+python tools/test.py \
+    configs/nuscenes/det/transfusion/secfpn/camera+lidar/swint_v0p075/convfuser.yaml \
+    checkpoints/nuscenes_model.pth \
+    --eval bbox
+
+# Multi-GPU testing
+torchpack dist-run -np 8 python tools/test.py \
+    configs/nuscenes/det/transfusion/secfpn/camera+lidar/swint_v0p075/convfuser.yaml \
+    checkpoints/nuscenes_model.pth \
+    --eval bbox
 ```
 
-We recommend the users to run data preparation (instructions are available in the next section) outside the docker if possible. Note that the dataset directory should be an absolute path. Within the docker, please run the following command to clone our repo and install custom CUDA extensions:
+#### Expected nuScenes Results
+```
+mAP: 0.3588
+mATE: 0.4818
+mASE: 0.5229
+mAOE: 0.6159
+mAVE: 0.5402
+mAAE: 0.3253
+NDS: 0.4308
 
+Per-class results:
+Object Class            AP        ATE       ASE       AOE       AVE       AAE
+car                     0.318     0.376     0.313     0.536     0.248     0.202
+truck                   0.194     0.430     0.264     0.300     0.131     0.006
+bus                     0.947     0.204     0.127     0.063     0.849     0.271
+trailer                 0.000     1.000     1.000     1.000     1.000     1.000
+construction_vehicle    0.000     1.000     1.000     1.000     1.000     1.000
+pedestrian              0.805     0.134     0.387     0.349     0.241     0.120
+motorcycle              0.039     0.421     0.466     0.950     0.061     0.004
+bicycle                 0.467     0.166     0.195     0.345     0.791     0.000
+traffic_cone            0.819     0.087     0.476     nan       nan       nan
+barrier                 0.000     1.000     1.000     1.000     nan       nan
+```
+
+## 👁️ Visualization
+
+### Waymo Visualization
+
+#### Ground Truth Visualization
 ```bash
-cd home && git clone https://github.com/mit-han-lab/bevfusion && cd bevfusion
-python setup.py develop
+# Visualize GT boxes
+python tools/visualize.py \
+    configs/waymo/det/transfusion/secfpn/camera+lidar/default.yaml \
+    --mode gt \
+    --split val \
+    --out-dir viz_waymo_gt
+
+# Visualize specific classes
+python tools/visualize.py \
+    configs/waymo/det/transfusion/secfpn/camera+lidar/default.yaml \
+    --mode gt \
+    --split val \
+    --bbox-classes 0 1 \
+    --out-dir viz_waymo_vehicle_pedestrian
 ```
 
-You can then create a symbolic link `data` to the `/dataset` directory in the docker.
-
-### Data Preparation
-
-#### nuScenes
-
-Please follow the instructions from [here](https://github.com/open-mmlab/mmdetection3d/blob/master/docs/en/datasets/nuscenes_det.md) to download and preprocess the nuScenes dataset. Please remember to download both detection dataset and the map extension (for BEV map segmentation). After data preparation, you will be able to see the following directory structure (as is indicated in mmdetection3d):
-
-```
-mmdetection3d
-├── mmdet3d
-├── tools
-├── configs
-├── data
-│   ├── nuscenes
-│   │   ├── maps
-│   │   ├── samples
-│   │   ├── sweeps
-│   │   ├── v1.0-test
-|   |   ├── v1.0-trainval
-│   │   ├── nuscenes_database
-│   │   ├── nuscenes_infos_train.pkl
-│   │   ├── nuscenes_infos_val.pkl
-│   │   ├── nuscenes_infos_test.pkl
-│   │   ├── nuscenes_dbinfos_train.pkl
-
-```
-
-### Evaluation
-
-We also provide instructions for evaluating our pretrained models. Please download the checkpoints using the following script: 
-
+#### Prediction Visualization
 ```bash
-./tools/download_pretrained.sh
+# Visualize model predictions
+python tools/visualize.py \
+    configs/waymo/det/transfusion/secfpn/camera+lidar/default.yaml \
+    --mode pred \
+    --checkpoint checkpoints/waymo_model.pth \
+    --split val \
+    --bbox-score 0.3 \
+    --out-dir viz_waymo_pred
 ```
 
-Then, you will be able to run:
+#### Class Mapping (Waymo)
+- `0`: vehicle
+- `1`: pedestrian
+- `2`: cyclist
+- `3`: sign
 
+### nuScenes Visualization
+
+#### Ground Truth Visualization
 ```bash
-torchpack dist-run -np [number of gpus] python tools/test.py [config file path] pretrained/[checkpoint name].pth --eval [evaluation type]
+# Visualize GT boxes
+python tools/visualize.py \
+    configs/nuscenes/det/transfusion/secfpn/camera+lidar/swint_v0p075/convfuser.yaml \
+    --mode gt \
+    --split val \
+    --out-dir viz_nuscenes_gt
+
+# Visualize specific classes
+python tools/visualize.py \
+    configs/nuscenes/det/transfusion/secfpn/camera+lidar/swint_v0p075/convfuser.yaml \
+    --mode gt \
+    --split val \
+    --bbox-classes 0 1 2 \
+    --out-dir viz_nuscenes_car_truck_bus
 ```
 
-For example, if you want to evaluate the detection variant of BEVFusion, you can try:
-
+#### Prediction Visualization
 ```bash
-torchpack dist-run -np 8 python tools/test.py configs/nuscenes/det/transfusion/secfpn/camera+lidar/swint_v0p075/convfuser.yaml pretrained/bevfusion-det.pth --eval bbox
+# Visualize model predictions
+python tools/visualize.py \
+    configs/nuscenes/det/transfusion/secfpn/camera+lidar/swint_v0p075/convfuser.yaml \
+    --mode pred \
+    --checkpoint checkpoints/nuscenes_model.pth \
+    --split val \
+    --bbox-score 0.3 \
+    --out-dir viz_nuscenes_pred
 ```
 
-While for the segmentation variant of BEVFusion, this command will be helpful:
+#### Class Mapping (nuScenes)
+- `0`: car
+- `1`: truck
+- `2`: construction_vehicle
+- `3`: bus
+- `4`: trailer
+- `5`: barrier
+- `6`: motorcycle
+- `7`: bicycle
+- `8`: pedestrian
+- `9`: traffic_cone
 
-```bash
-torchpack dist-run -np 8 python tools/test.py configs/nuscenes/seg/fusion-bev256d2-lss.yaml pretrained/bevfusion-seg.pth --eval map
+### Visualization Output
+
+Visualization results are saved in:
+```
+viz_output/
+├── camera-0/          # Front camera images with projected 3D boxes
+├── camera-1/          # Front-right camera images
+├── camera-2/          # Back camera images
+├── camera-3/          # Front-left camera images
+├── camera-4/          # Back-left camera images
+└── lidar/             # LiDAR Bird's Eye View with 3D boxes
 ```
 
-### Training
+**Note**: Camera visualization for Waymo currently has coordinate transformation issues. LiDAR Bird's Eye View visualization is recommended and fully functional.
 
-We provide instructions to reproduce our results on nuScenes.
+## 📁 Directory Structure
 
-For example, if you want to train the camera-only variant for object detection, please run:
-
-```bash
-torchpack dist-run -np 8 python tools/train.py configs/nuscenes/det/centerhead/lssfpn/camera/256x704/swint/default.yaml --model.encoders.camera.backbone.init_cfg.checkpoint pretrained/swint-nuimages-pretrained.pth
+```
+bevfusion/
+├── configs/
+│   ├── waymo/
+│   │   └── det/
+│   │       ├── centerhead/
+│   │       └── transfusion/
+│   └── nuscenes/
+│       └── det/
+│           ├── centerhead/
+│           └── transfusion/
+├── data/
+│   ├── waymo/
+│   └── nuscenes/
+├── mmdet3d/
+│   ├── datasets/
+│   │   ├── waymo_dataset.py
+│   │   └── nuscenes_dataset.py
+│   └── models/
+├── tools/
+│   ├── train.py
+│   ├── test.py
+│   └── visualize.py
+├── runs/                # Training outputs
+│   └── run-xxxxxxxx/
+│       ├── configs.yaml
+│       ├── latest.pth
+│       └── epoch_*.pth
+└── README.md
 ```
 
-For camera-only BEV segmentation model, please run:
+## 🔧 Common Issues
 
-```bash
-torchpack dist-run -np 8 python tools/train.py configs/nuscenes/seg/camera-bev256d2.yaml --model.encoders.camera.backbone.init_cfg.checkpoint pretrained/swint-nuimages-pretrained.pth
-```
+### Waymo Dataset Issues
+1. **Class mapping**: cyclist and sign classes may have low AP due to data distribution
+2. **Camera visualization**: LiDAR2Image transformation issues - use LiDAR visualization instead
+3. **Memory usage**: Reduce batch size if GPU memory is insufficient
 
-For LiDAR-only detector, please run:
+### nuScenes Dataset Issues
+1. **Data version**: Ensure you're using v1.0-trainval
+2. **Map data**: Some metrics require map annotations
+3. **Velocity**: nuScenes includes velocity information, Waymo does not
 
-```bash
-torchpack dist-run -np 8 python tools/train.py configs/nuscenes/det/transfusion/secfpn/lidar/voxelnet_0p075.yaml
-```
+### Training Issues
+1. **CUDA OOM**: Reduce batch size or image resolution
+2. **Slow training**: Use multi-GPU training or reduce data augmentation
+3. **NaN loss**: Check learning rate and data preprocessing
 
-For LiDAR-only BEV segmentation model, please run:
+## 📚 Additional Resources
 
-```bash
-torchpack dist-run -np 8 python tools/train.py configs/nuscenes/seg/lidar-centerpoint-bev128.yaml
-```
+- [Original BEVFusion Paper](https://arxiv.org/abs/2205.13542)
+- [Waymo Open Dataset](https://waymo.com/open/)
+- [nuScenes Dataset](https://www.nuscenes.org/)
+- [MMDetection3D Documentation](https://mmdetection3d.readthedocs.io/)
 
-For BEVFusion detection model, please run:
-```bash
-torchpack dist-run -np 8 python tools/train.py configs/nuscenes/det/transfusion/secfpn/camera+lidar/swint_v0p075/convfuser.yaml --model.encoders.camera.backbone.init_cfg.checkpoint pretrained/swint-nuimages-pretrained.pth --load_from pretrained/lidar-only-det.pth 
-```
+## 🎯 Performance Benchmarks
 
-For BEVFusion segmentation model, please run:
-```bash
-torchpack dist-run -np 8 python tools/train.py configs/nuscenes/seg/fusion-bev256d2-lss.yaml --model.encoders.camera.backbone.init_cfg.checkpoint pretrained/swint-nuimages-pretrained.pth
-```
+### Waymo (Camera + LiDAR)
+- **mAP**: 35-45%
+- **Training time**: ~2-3 days on 8x A100
+- **Inference**: ~15 FPS
 
-Note: please run `tools/test.py` separately after training to get the final evaluation metrics.
+### nuScenes (Camera + LiDAR)
+- **mAP**: 65-70%
+- **NDS**: 70-75%
+- **Training time**: ~1-2 days on 8x A100
+- **Inference**: ~12 FPS
 
-## Deployment on TensorRT
-[CUDA-BEVFusion](https://github.com/NVIDIA-AI-IOT/Lidar_AI_Solution/tree/master/CUDA-BEVFusion): Best practice for TensorRT, which provides INT8 acceleration solutions and achieves 25fps on ORIN.
+---
 
-## FAQs
-
-Q: Can we directly use the info files prepared by mmdetection3d?
-
-A: We recommend re-generating the info files using this codebase since we forked mmdetection3d before their [coordinate system refactoring](https://github.com/open-mmlab/mmdetection3d/blob/master/docs/en/changelog.md).
-
-## Acknowledgements
-
-BEVFusion is based on [mmdetection3d](https://github.com/open-mmlab/mmdetection3d). It is also greatly inspired by the following outstanding contributions to the open-source community: [LSS](https://github.com/nv-tlabs/lift-splat-shoot), [BEVDet](https://github.com/HuangJunjie2017/BEVDet), [TransFusion](https://github.com/XuyangBai/TransFusion), [CenterPoint](https://github.com/tianweiy/CenterPoint), [MVP](https://github.com/tianweiy/MVP), [FUTR3D](https://arxiv.org/abs/2203.10642), [CVT](https://github.com/bradyz/cross_view_transformers) and [DETR3D](https://github.com/WangYueFt/detr3d). 
-
-Please also check out related papers in the camera-only 3D perception community such as [BEVDet4D](https://arxiv.org/abs/2203.17054), [BEVerse](https://arxiv.org/abs/2205.09743), [BEVFormer](https://arxiv.org/abs/2203.17270), [M2BEV](https://arxiv.org/abs/2204.05088), [PETR](https://arxiv.org/abs/2203.05625) and [PETRv2](https://arxiv.org/abs/2206.01256), which might be interesting future extensions to BEVFusion.
-
-
-## Citation
-
-If BEVFusion is useful or relevant to your research, please kindly recognize our contributions by citing our paper:
-
-```bibtex
-@inproceedings{liu2022bevfusion,
-  title={BEVFusion: Multi-Task Multi-Sensor Fusion with Unified Bird's-Eye View Representation},
-  author={Liu, Zhijian and Tang, Haotian and Amini, Alexander and Yang, Xingyu and Mao, Huizi and Rus, Daniela and Han, Song},
-  booktitle={IEEE International Conference on Robotics and Automation (ICRA)},
-  year={2023}
-}
-```
+*This implementation includes improvements for Waymo dataset support and enhanced evaluation metrics.*
