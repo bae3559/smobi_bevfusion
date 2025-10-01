@@ -154,14 +154,30 @@ def main() -> None:
                     ("original", metas["lidar2image"][k]),
                 ]
 
-                # Try identity transform (for debugging)
-                identity_transform = np.eye(4, dtype=np.float32)
-                # Scale to image size
-                identity_transform[0, 0] = 1000  # fx
-                identity_transform[1, 1] = 1000  # fy
-                identity_transform[0, 2] = image.shape[1] / 2  # cx
-                identity_transform[1, 2] = image.shape[0] / 2  # cy
-                transform_options.append(("simple", identity_transform))
+                # Try corrected transform for Waymo
+                # Waymo uses different coordinate system, need to adjust
+                corrected_transform = metas["lidar2image"][k].copy()
+
+                # Apply coordinate system correction for Waymo
+                # Waymo: x-forward, y-left, z-up
+                # Need to convert to camera coordinate system
+                coord_correction = np.array([
+                    [0, -1, 0, 0],  # y -> -x
+                    [0, 0, -1, 0],  # z -> -y
+                    [1, 0, 0, 0],   # x -> z
+                    [0, 0, 0, 1]
+                ], dtype=np.float32)
+
+                corrected_transform = corrected_transform @ coord_correction
+                transform_options.append(("corrected", corrected_transform))
+
+                # Try simple projection (for debugging)
+                simple_transform = np.eye(4, dtype=np.float32)
+                simple_transform[0, 0] = 800   # fx
+                simple_transform[1, 1] = 800   # fy
+                simple_transform[0, 2] = image.shape[1] / 2  # cx
+                simple_transform[1, 2] = image.shape[0] / 2  # cy
+                transform_options.append(("simple", simple_transform))
 
                 for transform_name, transform_matrix in transform_options:
                     output_path = os.path.join(args.out_dir, f"camera-{k}-{transform_name}", f"{name}.png")
