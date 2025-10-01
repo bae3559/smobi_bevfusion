@@ -23,6 +23,10 @@ OBJECT_PALETTE = {
     "bicycle": (220, 20, 60),
     "pedestrian": (0, 0, 230),
     "traffic_cone": (47, 79, 79),
+    # Waymo classes
+    "vehicle": (255, 158, 0),    # Same as car
+    "cyclist": (220, 20, 60),    # Same as bicycle
+    "sign": (47, 79, 79),        # Same as traffic_cone
 }
 
 MAP_PALETTE = {
@@ -66,6 +70,8 @@ def visualize_camera(
         coords = coords.reshape(-1, 8, 4)
 
         indices = np.all(coords[..., 2] > 0, axis=1)
+        # print(f"  Before depth filter: {coords.shape[0]} boxes")
+        # print(f"  After depth filter: {np.sum(indices)} boxes")
         coords = coords[indices]
         labels = labels[indices]
 
@@ -79,8 +85,12 @@ def visualize_camera(
         coords[:, 1] /= coords[:, 2]
 
         coords = coords[..., :2].reshape(-1, 8, 2)
+        # print(f"  Final coords shape: {coords.shape}")
+        # print(f"  Coords range: x=[{coords[..., 0].min():.1f}, {coords[..., 0].max():.1f}], y=[{coords[..., 1].min():.1f}, {coords[..., 1].max():.1f}]")
+        # print(f"  Image shape: {canvas.shape}")
         for index in range(coords.shape[0]):
             name = classes[labels[index]]
+            # print(f"  Drawing box {index} for class '{name}'")
             for start, end in [
                 (0, 1),
                 (0, 3),
@@ -97,8 +107,8 @@ def visualize_camera(
             ]:
                 cv2.line(
                     canvas,
-                    coords[index, start].astype(np.int),
-                    coords[index, end].astype(np.int),
+                    tuple(coords[index, start].astype(np.int32)),
+                    tuple(coords[index, end].astype(np.int32)),
                     color or OBJECT_PALETTE[name],
                     thickness,
                     cv2.LINE_AA,

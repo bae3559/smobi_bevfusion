@@ -10,8 +10,8 @@ from mmcv.parallel import MMDistributedDataParallel
 from mmcv.runner import load_checkpoint
 from torchpack import distributed as dist
 from torchpack.utils.config import configs
-from torchpack.utils.tqdm import tqdm
-
+#from torchpack.utils.tqdm import tqdm
+from tqdm import tqdm
 from mmdet3d.core import LiDARInstance3DBoxes
 from mmdet3d.core.utils import visualize_camera, visualize_lidar, visualize_map
 from mmdet3d.datasets import build_dataloader, build_dataset
@@ -81,7 +81,15 @@ def main() -> None:
 
     for data in tqdm(dataflow):
         metas = data["metas"].data[0][0]
-        name = "{}-{}".format(metas["timestamp"], metas["token"])
+        # print("Available metas keys:", list(metas.keys()))
+
+        # Handle both nuScenes (has token) and Waymo (doesn't have token)
+        if "token" in metas:
+            name = "{}-{}".format(metas["timestamp"], metas["token"])
+        else:
+            # For Waymo, use timestamp and sample_idx
+            sample_idx = metas.get("sample_idx", "unknown")
+            name = "{}-{}".format(metas["timestamp"], sample_idx)
 
         if args.mode == "pred":
             with torch.inference_mode():
@@ -91,6 +99,8 @@ def main() -> None:
             bboxes = data["gt_bboxes_3d"].data[0][0].tensor.numpy()
             labels = data["gt_labels_3d"].data[0][0].numpy()
 
+            # print(f"Original GT boxes: {len(bboxes)}, labels: {np.unique(labels)}")
+
             if args.bbox_classes is not None:
                 indices = np.isin(labels, args.bbox_classes)
                 bboxes = bboxes[indices]
@@ -98,6 +108,7 @@ def main() -> None:
 
             bboxes[..., 2] -= bboxes[..., 5] / 2
             bboxes = LiDARInstance3DBoxes(bboxes, box_dim=9)
+            print(f"Processing {len(bboxes)} boxes for visualization")
         elif args.mode == "pred" and "boxes_3d" in outputs[0]:
             bboxes = outputs[0]["boxes_3d"].tensor.numpy()
             scores = outputs[0]["scores_3d"].numpy()
@@ -133,14 +144,36 @@ def main() -> None:
         if "img" in data:
             for k, image_path in enumerate(metas["filename"]):
                 image = mmcv.imread(image_path)
-                visualize_camera(
-                    os.path.join(args.out_dir, f"camera-{k}", f"{name}.png"),
-                    image,
-                    bboxes=bboxes,
-                    labels=labels,
-                    transform=metas["lidar2image"][k],
-                    classes=cfg.object_classes,
-                )
+                # print(f"Camera {k}: image shape {image.shape}")
+                if bboxes is not None:
+                    print(f"Camera {k}: {len(bboxes)} boxes")
+                    # print(f"Camera {k} lidar2image matrix:")
+                    # print(metas['lidar2image'][k])
+                # Try different transforms for Waymo
+                transform_options = [
+                    ("original", metas["lidar2image"][k]),
+                ]
+
+                # Try identity transform (for debugging)
+                identity_transform = np.eye(4, dtype=np.float32)
+                # Scale to image size
+                identity_transform[0, 0] = 1000  # fx
+                identity_transform[1, 1] = 1000  # fy
+                identity_transform[0, 2] = image.shape[1] / 2  # cx
+                identity_transform[1, 2] = image.shape[0] / 2  # cy
+                transform_options.append(("simple", identity_transform))
+
+                for transform_name, transform_matrix in transform_options:
+                    output_path = os.path.join(args.out_dir, f"camera-{k}-{transform_name}", f"{name}.png")
+                    # print(f"  Trying {transform_name} transform")
+                    visualize_camera(
+                        output_path,
+                        image,
+                        bboxes=bboxes,
+                        labels=labels,
+                        transform=transform_matrix,
+                        classes=cfg.object_classes,
+                    )
 
         if "points" in data:
             lidar = data["points"].data[0][0].numpy()
