@@ -97,13 +97,13 @@ data/nuscenes/
 #### 1. Single GPU Training
 ```bash
 torchpack dist-run -np 1 python tools/train.py \
-    configs/waymo/transfusion/secfpn/camera+lidar/swint_v0p075/default.yaml
+    configs/waymo/det/transfusion/secfpn/camera+lidar/swint_v0p075/convfuser.yaml
 ```
 
 #### 2. Multi-GPU Training
 ```bash
 torchpack dist-run -np 8 python tools/train.py \
-    configs/waymo/transfusion/secfpn/camera+lidar/swint_v0p075/default.yaml
+    configs/waymo/det/transfusion/secfpn/camera+lidar/swint_v0p075/convfuser.yaml
 ```
 
 #### 3. Configuration Options

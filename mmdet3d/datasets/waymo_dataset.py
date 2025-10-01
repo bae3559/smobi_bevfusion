@@ -23,16 +23,8 @@ class WaymoDataset(Custom3DDataset):
 
     def fix_class_mapping(self, gt_names):
         """GT 클래스명을 올바른 순서로 매핑"""
-        fixed_names = []
-        for name in gt_names:
-            # converter에서 잘못 매핑된 것을 수정
-            if name == 'sign':  # converter에서 cyclist → sign으로 잘못 매핑
-                fixed_names.append('cyclist')
-            elif name == 'cyclist':  # converter에서 sign → cyclist로 잘못 매핑
-                fixed_names.append('sign')
-            else:
-                fixed_names.append(name)  # vehicle, pedestrian은 정상
-        return np.array(fixed_names)
+        # 매핑 수정 없이 원본 그대로 사용 (올바른 학습을 위해)
+        return gt_names
 
     def __init__(self,
                  dataset_root=None,
