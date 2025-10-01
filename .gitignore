@@ -136,9 +136,8 @@ mmdet3d.egg-info/*
 pretrained/
 pretrained/*
 visualize/*
-works_dirs/*
+work_dirs/*
 
 # torch hipify generated files
 *_hip.*
 *.hip
-pretrained/*.pth
