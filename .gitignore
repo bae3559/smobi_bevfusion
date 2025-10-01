@@ -133,6 +133,8 @@ models/*
 data/*
 runs/*
 mmdet3d.egg-info/*
+pretrained/
+pretrained/*
 
 # torch hipify generated files
 *_hip.*
