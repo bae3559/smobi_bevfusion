@@ -127,9 +127,23 @@ def parse_tfrecord(tfrecord_path, out_dir):
 
         #---------------------- 2. 카메라 저장----------------------
         cams = {}
+
+        # NuScenes 6-camera structure 매핑
+        # Waymo: FRONT, FRONT_LEFT, FRONT_RIGHT, SIDE_LEFT, SIDE_RIGHT (5개)
+        # NuScenes: CAM_FRONT, CAM_FRONT_LEFT, CAM_FRONT_RIGHT, CAM_BACK, CAM_BACK_LEFT, CAM_BACK_RIGHT (6개)
+        waymo_to_nuscenes_mapping = {
+            'FRONT': 'CAM_FRONT',
+            'FRONT_LEFT': 'CAM_FRONT_LEFT',
+            'FRONT_RIGHT': 'CAM_FRONT_RIGHT',
+            'SIDE_LEFT': 'CAM_BACK_LEFT',    # 측면을 후방으로 매핑
+            'SIDE_RIGHT': 'CAM_BACK_RIGHT'   # 측면을 후방으로 매핑
+        }
+
         for img in frame.images:
             cam_name = open_dataset.CameraName.Name.Name(img.name).upper()
-            img_dir = Path(out_dir) / "images" / cam_name
+            nuscenes_cam_name = waymo_to_nuscenes_mapping.get(cam_name, f"CAM_{cam_name}")
+
+            img_dir = Path(out_dir) / "images" / nuscenes_cam_name
             img_dir.mkdir(parents=True, exist_ok=True)
             img_path = img_dir / f"{frame_idx}.jpg"
             with open(img_path, "wb") as f:
@@ -159,13 +173,39 @@ def parse_tfrecord(tfrecord_path, out_dir):
             sensor2lidar_rotation = sensor2lidar[:3, :3]
             sensor2lidar_translation = sensor2lidar[:3, 3]
 
-            cams[f"CAM_{cam_name}"] = dict(
+            cams[nuscenes_cam_name] = dict(
                 data_path=str(img_path),
                 cam_intrinsic=intrinsics,
                 sensor2ego_rotation=sensor2ego_rotation,
                 sensor2ego_translation=sensor2ego_translation,
                 sensor2lidar_rotation=sensor2lidar_rotation,
                 sensor2lidar_translation=sensor2lidar_translation,
+                timestamp=frame.timestamp_micros,
+            )
+
+        # CAM_BACK 더미 카메라 추가 (Waymo에는 후방 카메라가 없음)
+        if 'CAM_BACK' not in cams:
+            # 더미 이미지 생성 (검은색 이미지)
+            dummy_img_dir = Path(out_dir) / "images" / "CAM_BACK"
+            dummy_img_dir.mkdir(parents=True, exist_ok=True)
+            dummy_img_path = dummy_img_dir / f"{frame_idx}.jpg"
+
+            # 검은색 더미 이미지 생성 (Waymo 카메라와 같은 크기)
+            from PIL import Image as PILImage
+            dummy_img = PILImage.fromarray(np.zeros((1280, 1920, 3), dtype=np.uint8))  # Waymo 카메라 해상도
+            dummy_img.save(dummy_img_path)
+
+            # 더미 calibration (단위행렬)
+            dummy_intrinsics = np.eye(3, dtype=np.float32)
+            dummy_extrinsic = np.eye(4, dtype=np.float32)
+
+            cams['CAM_BACK'] = dict(
+                data_path=str(dummy_img_path),
+                cam_intrinsic=dummy_intrinsics,
+                sensor2ego_rotation=dummy_extrinsic[:3, :3],
+                sensor2ego_translation=dummy_extrinsic[:3, 3],
+                sensor2lidar_rotation=dummy_extrinsic[:3, :3],
+                sensor2lidar_translation=dummy_extrinsic[:3, 3],
                 timestamp=frame.timestamp_micros,
             )
 

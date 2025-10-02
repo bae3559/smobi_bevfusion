@@ -74,7 +74,7 @@ class WaymoDataset(Custom3DDataset):
         # *** 클래스 매핑 수정 ***
         # Waymo converter에서 cyclist와 sign이 바뀌어 저장된 것을 수정
         gt_names_3d = self.fix_class_mapping(gt_names_3d)
-        print(f"Fixed GT classes: {dict(zip(*np.unique(gt_names_3d, return_counts=True)))}")
+        # print(f"Fixed GT classes: {dict(zip(*np.unique(gt_names_3d, return_counts=True)))}")
 
         # 클래스 인덱스 변환
         gt_labels_3d = []
@@ -276,15 +276,15 @@ class WaymoDataset(Custom3DDataset):
         )
 
         # Debug: Check what's in the first result
-        if len(results) > 0:
-            print(f"First result keys: {results[0].keys()}")
-            for key, value in results[0].items():
-                if hasattr(value, 'shape'):
-                    print(f"  {key}: shape {value.shape}")
-                else:
-                    print(f"  {key}: {type(value)}")
-        else:
-            print("No results to format!")
+        # if len(results) > 0:
+        #     print(f"First result keys: {results[0].keys()}")
+        #     for key, value in results[0].items():
+        #         if hasattr(value, 'shape'):
+        #             print(f"  {key}: shape {value.shape}")
+        #         else:
+        #             print(f"  {key}: {type(value)}")
+        # else:
+        #     print("No results to format!")
 
         if jsonfile_prefix is None:
             tmp_dir = tempfile.TemporaryDirectory()
@@ -304,7 +304,7 @@ class WaymoDataset(Custom3DDataset):
             for i, result in enumerate(results):
                 # Check if this result has 3D detection outputs
                 if "boxes_3d" in result and "scores_3d" in result and "labels_3d" in result:
-                    print(f"Sample {i}: found 3D detection outputs")
+                    # print(f"Sample {i}: found 3D detection outputs")
                     sample_token = self.data_infos[i].get("token", f"sample_{i}")
                     trans = self.data_infos[i]["ego2global_translation"]
                     rot = self.data_infos[i]["ego2global_rotation"]

@@ -12,7 +12,7 @@ This repository contains BEVFusion implementation for both **Waymo** and **nuSce
 ### Installation
 ```bash
 # Clone repository
-git clone https://github.com/mit-han-lab/bevfusion.git
+git clone https://github.com/bae3559/smobi_bevfusion.git
 cd bevfusion
 
 # Install dependencies
