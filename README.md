@@ -32,19 +32,22 @@ python setup.py develop
 
 #### Convert to BEVFusion Format
 ```bash
-# Convert Waymo data (full dataset)
-python tools/create_data.py waymo \
-    --root-path data/waymo/ \
-    --out-dir data/waymo/Waymo_processed \
-    --extra-tag waymo \
-    --version full
-
 # Convert Waymo mini dataset (for testing)
 python tools/create_data.py waymo \
     --root-path data/waymo/Waymo_mini \
     --out-dir data/waymo/Waymo_processed \
     --extra-tag waymo \
     --version mini
+    
+# Convert Waymo data (full dataset)
+# Not yet
+python tools/create_data.py waymo \
+    --root-path data/waymo/ \
+    --out-dir data/waymo/Waymo_processed \
+    --extra-tag waymo \
+    --version full
+
+
 ```
 
 #### Expected Directory Structure

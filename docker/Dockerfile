@@ -1,4 +1,4 @@
- FROM nvidia/cuda:11.3.1-devel-ubuntu20.04
+FROM nvidia/cuda:11.3.1-devel-ubuntu20.04
 
 # 환경변수 설정 (비인터랙티브 설치 + 타임존 지정)
 ENV DEBIAN_FRONTEND=noninteractive
@@ -28,11 +28,10 @@ RUN pip install -U openmim "numpy<1.24"
 RUN pip install Pillow==8.4.0
 RUN pip install tqdm
 RUN pip install torchpack
-RUN pip install mmcv==1.4.0 mmcv-full==1.4.0 mmdet==2.20.0
+RUN pip install mmcv==1.4.0 mmdet==2.20.0
 RUN pip install nuscenes-devkit
 RUN pip install mpi4py==3.0.3
 RUN pip install numba==0.48.0
-
-# 나머지 의존성
-RUN pip install Pillow==8.4.0 tqdm torchpack nuscenes-devkit mpi4py==3.0.3 numba==0.48.0
+RUN pip install yapf==0.32.0
+RUN pip install mmcv-full==1.4.0 -f https://download.openmmlab.com/mmcv/dist/cu113/torch1.10.0/index.html
 RUN pip install --default-timeout=100 tensorflow==2.12.0 waymo-open-dataset-tf-2-12-0
