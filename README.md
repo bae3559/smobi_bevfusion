@@ -27,7 +27,7 @@ python setup.py develop
 #### Download Data
 ```bash
 # Download from Waymo Open Dataset
-# Place raw data in: data/waymo/raw/
+# Place raw data in: data/waymo/
 ```
 
 #### Convert to BEVFusion Format
@@ -163,23 +163,23 @@ torchpack dist-run -np 8 python tools/test.py \
     --eval bbox
 ```
 
-#### Expected Waymo Results
+#### Expected Waymo Results 
 ```
 Waymo Evaluation Results:
-mAP: 0.3588
-mATE: 0.4818
-mASE: 0.5229
-mAOE: 0.6159
-mAVE: 0.0000
-mAAE: 0.0000
-NDS: 0.4308
+mAP: 
+mATE: 
+mASE: 
+mAOE: 
+mAVE: 
+mAAE: 
+NDS:
 
 Per-class results:
 Object Class              AP        ATE       ASE       AOE       AVE       AAE
-vehicle                   0.628     0.376     0.313     0.536     0.000     0.000
-pedestrian                0.561     0.134     0.387     0.349     0.000     0.000
-cyclist                   0.000     1.000     1.000     1.000     0.000     0.000
-sign                      0.577     0.166     0.195     0.345     0.000     0.000
+vehicle                   
+pedestrian                
+cyclist                   
+sign                      
 ```
 
 ### nuScenes Testing
