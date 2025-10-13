@@ -79,17 +79,26 @@ def main() -> None:
         )
         model.eval()
 
-    for data in tqdm(dataflow):
+    for i, data in enumerate(tqdm(dataflow)):
+        if i >= 1:  # Only process the first frame
+            break
         metas = data["metas"].data[0][0]
-        # print("Available metas keys:", list(metas.keys()))
 
         # Handle both nuScenes (has token) and Waymo (doesn't have token)
         if "token" in metas:
             name = "{}-{}".format(metas["timestamp"], metas["token"])
+            dataset_type = "nuscenes"
         else:
-            # For Waymo, use timestamp and sample_idx
-            sample_idx = metas.get("sample_idx", "unknown")
-            name = "{}-{}".format(metas["timestamp"], sample_idx)
+            # For Waymo, extract frame identifier from lidar_path or use timestamp
+            lidar_path = metas.get("lidar_path", "")
+            if lidar_path:
+                # Extract frame ID from path like: .../1522688014970187.bin
+                frame_id = os.path.basename(lidar_path).split('.')[0]
+                name = "{}-{}".format(metas["timestamp"], frame_id)
+            else:
+                # Fallback to just timestamp
+                name = str(metas["timestamp"])
+            dataset_type = "waymo"
 
         if args.mode == "pred":
             try:
@@ -108,16 +117,36 @@ def main() -> None:
         if args.mode == "gt" and "gt_bboxes_3d" in data:
             bboxes = data["gt_bboxes_3d"].data[0][0].tensor.numpy()
             labels = data["gt_labels_3d"].data[0][0].numpy()
-
-            # print(f"Original GT boxes: {len(bboxes)}, labels: {np.unique(labels)}")
+            print(f"GT labels: {labels}")
+            print(f"Unique labels: {np.unique(labels)}")
+            print(f"Object classes: {cfg.object_classes}")
+            print(f"Original GT boxes: {len(bboxes)}, labels: {np.unique(labels)}")
 
             if args.bbox_classes is not None:
                 indices = np.isin(labels, args.bbox_classes)
                 bboxes = bboxes[indices]
                 labels = labels[indices]
 
+            # Debug: print original bbox format before LiDARInstance3DBoxes conversion
+            print(f"[DEBUG] Original GT bboxes shape: {bboxes.shape}")
+            if len(bboxes) > 0:
+                print(f"[DEBUG] First original bbox: {bboxes[0]}")
+                print(f"[DEBUG] Original bbox format: [x, y, z, dx, dy, dz, heading, ...]")
+                print(f"[DEBUG] First bbox dims: dx={bboxes[0, 3]:.2f}, dy={bboxes[0, 4]:.2f}, dz={bboxes[0, 5]:.2f}")
+
             bboxes[..., 2] -= bboxes[..., 5] / 2
             bboxes = LiDARInstance3DBoxes(bboxes, box_dim=9)
+
+            # Debug: print corners after LiDARInstance3DBoxes conversion
+            if len(bboxes) > 0:
+                print(f"[DEBUG] After LiDARInstance3DBoxes conversion:")
+                print(f"[DEBUG] First box corners shape: {bboxes.corners.shape}")
+                corners_0 = bboxes.corners[0]
+                print(f"[DEBUG] First box corner ranges:")
+                print(f"  X: [{corners_0[:, 0].min():.2f}, {corners_0[:, 0].max():.2f}]")
+                print(f"  Y: [{corners_0[:, 1].min():.2f}, {corners_0[:, 1].max():.2f}]")
+                print(f"  Z: [{corners_0[:, 2].min():.2f}, {corners_0[:, 2].max():.2f}]")
+
             print(f"Processing {len(bboxes)} boxes for visualization")
         elif args.mode == "pred" and "boxes_3d" in outputs[0]:
             bboxes = outputs[0]["boxes_3d"].tensor.numpy()
@@ -160,9 +189,27 @@ def main() -> None:
                     # print(f"Camera {k} lidar2image matrix:")
                     # print(metas['lidar2image'][k])
                 # Skip camera visualization due to transform issues
-                print(f"Skipping camera {k} visualization")
+                #print(f"Skipping camera {k} visualization")
                 # Skip the camera visualization loop entirely
+                
+                print(f"Camera {k}: Image shape {image.shape}")
+                print(f"Camera {k} lidar2image transformation", metas["lidar2image"][k])
 
+                # Get LiDAR points for projection testing
+                lidar_points = None
+                if "points" in data:
+                    lidar_points = data["points"].data[0][0].numpy()
+
+                visualize_camera(
+                    os.path.join(args.out_dir, f"camera-{k}", f"{name}.png"),
+                    image,
+                    bboxes=bboxes,
+                    labels=labels,
+                    transform=metas["lidar2image"][k],
+                    classes=cfg.object_classes,
+                    dataset_type=dataset_type,
+                    lidar_points=lidar_points,
+                )
         if "points" in data:
             lidar = data["points"].data[0][0].numpy()
             visualize_lidar(

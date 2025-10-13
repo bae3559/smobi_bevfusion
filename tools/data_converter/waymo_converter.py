@@ -103,6 +103,7 @@ def parse_tfrecord(tfrecord_path, out_dir):
                     ], axis=1)
                     points_list.append(points_with_features.numpy())
 
+
         if points_list:
             points_all = np.concatenate(points_list, axis=0)
             #print(f"DEBUG: Points after official extraction (ego coords) - X: [{points_all[:, 0].min():.2f}, {points_all[:, 0].max():.2f}], Y: [{points_all[:, 1].min():.2f}, {points_all[:, 1].max():.2f}], Z: [{points_all[:, 2].min():.2f}, {points_all[:, 2].max():.2f}]")
@@ -123,6 +124,7 @@ def parse_tfrecord(tfrecord_path, out_dir):
         lidar_out = Path(out_dir) / "lidar"
         lidar_out.mkdir(parents=True, exist_ok=True)
         lidar_path = lidar_out / f"{frame_idx}.bin"
+
         points_all.astype(np.float32).tofile(lidar_path)
 
         #---------------------- 2. 카메라 저장----------------------
@@ -135,8 +137,8 @@ def parse_tfrecord(tfrecord_path, out_dir):
             'FRONT': 'CAM_FRONT',
             'FRONT_LEFT': 'CAM_FRONT_LEFT',
             'FRONT_RIGHT': 'CAM_FRONT_RIGHT',
-            'SIDE_LEFT': 'CAM_BACK_LEFT',    # 측면을 후방으로 매핑
-            'SIDE_RIGHT': 'CAM_BACK_RIGHT'   # 측면을 후방으로 매핑
+            'SIDE_LEFT': 'CAM_BACK_LEFT',   
+            'SIDE_RIGHT': 'CAM_BACK_RIGHT'  
         }
 
         for img in frame.images:
@@ -195,17 +197,34 @@ def parse_tfrecord(tfrecord_path, out_dir):
             dummy_img = PILImage.fromarray(np.zeros((1280, 1920, 3), dtype=np.uint8))  # Waymo 카메라 해상도
             dummy_img.save(dummy_img_path)
 
-            # 더미 calibration (단위행렬)
-            dummy_intrinsics = np.eye(3, dtype=np.float32)
-            dummy_extrinsic = np.eye(4, dtype=np.float32)
+            # 더미 calibration (후방 카메라 위치로 가정)
+            # 다른 카메라와 비슷한 intrinsic 사용
+            dummy_intrinsics = np.array([
+                [2050.0, 0.0, 960.0],   # 다른 카메라와 비슷한 focal length, center
+                [0.0, 2050.0, 640.0],
+                [0.0, 0.0, 1.0]
+            ], dtype=np.float32)
+
+            # 후방 카메라 위치 (ego vehicle 뒤쪽, 180도 회전)
+            dummy_extrinsic = np.array([
+                [-1.0, 0.0, 0.0, -1.5],  # 뒤쪽 1.5m, 180도 회전 (front를 향함)
+                [0.0, -1.0, 0.0, 0.0],   # Y축 반전
+                [0.0, 0.0, 1.0, 2.1],    # 높이는 다른 카메라와 동일
+                [0.0, 0.0, 0.0, 1.0]
+            ], dtype=np.float32)
+
+            # ✅ Compute proper sensor2lidar for dummy camera
+            dummy_sensor2lidar = np.linalg.inv(lidar2ego) @ dummy_extrinsic
+            dummy_sensor2lidar_rotation = dummy_sensor2lidar[:3, :3]
+            dummy_sensor2lidar_translation = dummy_sensor2lidar[:3, 3]
 
             cams['CAM_BACK'] = dict(
                 data_path=str(dummy_img_path),
                 cam_intrinsic=dummy_intrinsics,
                 sensor2ego_rotation=dummy_extrinsic[:3, :3],
                 sensor2ego_translation=dummy_extrinsic[:3, 3],
-                sensor2lidar_rotation=dummy_extrinsic[:3, :3],
-                sensor2lidar_translation=dummy_extrinsic[:3, 3],
+                sensor2lidar_rotation=dummy_sensor2lidar_rotation,
+                sensor2lidar_translation=dummy_sensor2lidar_translation,
                 timestamp=frame.timestamp_micros,
             )
 
@@ -241,7 +260,7 @@ def parse_tfrecord(tfrecord_path, out_dir):
             sweeps=[],
             cams=cams,
             timestamp=frame.timestamp_micros,
-            gt_boxes=np.array(gt_boxes, dtype=np.float32),
+            gt_boxes=gt_boxes,
             gt_names=np.array(gt_names),
             num_lidar_pts=np.array(num_pts, dtype=np.int32),
             ego2global_translation=ego2global_translation,

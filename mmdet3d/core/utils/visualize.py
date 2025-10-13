@@ -54,70 +54,240 @@ def visualize_camera(
     classes: Optional[List[str]] = None,
     color: Optional[Tuple[int, int, int]] = None,
     thickness: float = 4,
-) -> None:
+    dataset_type,
+    lidar_points: Optional[np.ndarray] = None,
+    ) -> None:
     canvas = image.copy()
     canvas = cv2.cvtColor(canvas, cv2.COLOR_RGB2BGR)
+    if dataset_type=="waymo":
+        if bboxes is not None and len(bboxes) > 0:
+            corners = bboxes.corners
+            num_bboxes = corners.shape[0]
 
-    if bboxes is not None and len(bboxes) > 0:
-        corners = bboxes.corners
-        num_bboxes = corners.shape[0]
+            # Debug: Print original 3D bbox info
+            print(f"\n=== BBOX TRANSFORMATION DEBUG ===")
+            print(f"Original bboxes shape: {corners.shape}")
+            print(f"First box corners (LiDAR coordinates):")
+            for i in range(8):
+                print(f"  Corner {i}: x={corners[0, i, 0]:.3f}, y={corners[0, i, 1]:.3f}, z={corners[0, i, 2]:.3f}")
 
-        coords = np.concatenate(
-            [corners.reshape(-1, 3), np.ones((num_bboxes * 8, 1))], axis=-1
-        )
-        transform = copy.deepcopy(transform).reshape(4, 4)
-        coords = coords @ transform.T
-        coords = coords.reshape(-1, 8, 4)
+            coords = np.concatenate(
+                [corners.reshape(-1, 3), np.ones((num_bboxes * 8, 1))], axis=-1
+            )
 
-        indices = np.all(coords[..., 2] > 0, axis=1)
-        # print(f"  Before depth filter: {coords.shape[0]} boxes")
-        # print(f"  After depth filter: {np.sum(indices)} boxes")
-        coords = coords[indices]
-        labels = labels[indices]
+            print(f"\nFirst 4 homogeneous points:")
+            for i in range(4):
+                print(f"  Point {i}: {coords[i]}")
 
-        indices = np.argsort(-np.min(coords[..., 2], axis=1))
-        coords = coords[indices]
-        labels = labels[indices]
+            transform = copy.deepcopy(transform).reshape(4, 4)
+            print(f"\nOriginal transform matrix:")
+            print(transform)
 
-        coords = coords.reshape(-1, 4)
-        coords[:, 2] = np.clip(coords[:, 2], a_min=1e-5, a_max=1e5)
-        coords[:, 0] /= coords[:, 2]
-        coords[:, 1] /= coords[:, 2]
+            # EXPERIMENT: Use original transform directly (no coordinate system conversion)
+            print(f"\nUsing original transform directly (no coord conversion)")
+            # transform = transform  # Keep as-is
 
-        coords = coords[..., :2].reshape(-1, 8, 2)
-        # print(f"  Final coords shape: {coords.shape}")
-        # print(f"  Coords range: x=[{coords[..., 0].min():.1f}, {coords[..., 0].max():.1f}], y=[{coords[..., 1].min():.1f}, {coords[..., 1].max():.1f}]")
-        # print(f"  Image shape: {canvas.shape}")
-        for index in range(coords.shape[0]):
-            name = classes[labels[index]]
-            # print(f"  Drawing box {index} for class '{name}'")
-            for start, end in [
-                (0, 1),
-                (0, 3),
-                (0, 4),
-                (1, 2),
-                (1, 5),
-                (3, 2),
-                (3, 7),
-                (4, 5),
-                (4, 7),
-                (2, 6),
-                (5, 6),
-                (6, 7),
-            ]:
-                cv2.line(
-                    canvas,
-                    tuple(coords[index, start].astype(np.int32)),
-                    tuple(coords[index, end].astype(np.int32)),
-                    color or OBJECT_PALETTE[name],
-                    thickness,
-                    cv2.LINE_AA,
-                )
-        canvas = canvas.astype(np.uint8)
-    canvas = cv2.cvtColor(canvas, cv2.COLOR_BGR2RGB)
+            coords = coords @ transform.T
+            coords = coords.reshape(-1, 8, 4)
 
-    mmcv.mkdir_or_exist(os.path.dirname(fpath))
-    mmcv.imwrite(canvas, fpath)
+
+            indices = np.all(coords[..., 0] > 0, axis=1)  # Filter by x (depth) > 0
+            # print(f"  Before depth filter: {coords.shape[0]} boxes")
+            # print(f"  After depth filter: {np.sum(indices)} boxes")
+            coords = coords[indices]
+            labels = labels[indices]
+
+            indices = np.argsort(-np.min(coords[..., 0], axis=1))  # Sort by x (depth)
+            coords = coords[indices]
+            labels = labels[indices]
+
+            coords = coords.reshape(-1, 4)
+            # Standard perspective projection: divide by depth (z coordinate)
+            # Draw reference points to understand camera orientation (BGR format)
+            H, W = canvas.shape[:2]
+
+            coords[:, 0] = np.clip(coords[:, 0], a_min=1e-5, a_max=1e5)  # clip z (depth)
+            u = coords[:, 1] / coords[:, 0]   # x/z for horizontal
+            v = coords[:, 2] / coords[:, 0]   # y/z for vertical
+
+            # Use raw projected coordinates without any scaling or offset
+            coords = np.stack([u, v], axis=-1).reshape(-1, 8, 2)
+            print(f"Projected coords range: u=[{u.min():.6f}, {u.max():.6f}], v=[{v.min():.6f}, {v.max():.6f}]")
+            print("final coords", coords)
+            cv2.circle(canvas, (W//2, H//2), 20, (0, 255, 0), -1)    # Green center
+            cv2.circle(canvas, (50, 50), 15, (0, 0, 255), -1)        # Red top-left
+            cv2.circle(canvas, (W-50, 50), 15, (255, 0, 0), -1)      # Blue top-right
+            cv2.circle(canvas, (W//2, H-50), 15, (0, 255, 255), -1)  # Yellow bottom-center
+
+            print(f"Image shape: {W}x{H}, Center: ({W//2}, {H//2})")
+
+            # Test LiDAR point projection first
+            print("\n=== Testing LiDAR Point Projection ===")
+            test_lidar_points = np.array([
+                [10, 0, 0, 1],    # 10m forward
+                [10, 2, 0, 1],    # 10m forward, 2m left
+                [10, -2, 0, 1],   # 10m forward, 2m right
+                [10, 0, 2, 1],    # 10m forward, 2m up
+                [5, 1, 1, 1],     # 5m forward, 1m left, 1m up
+            ])
+
+            # Apply same transformation
+            test_coords = test_lidar_points @ transform.T
+            print(f"Test coords after transform: {test_coords}")
+
+            # Project same way as bboxes
+            test_coords[:, 0] = np.clip(test_coords[:, 0], a_min=1e-5, a_max=1e5)
+            test_u = test_coords[:, 1] / test_coords[:, 0]
+            test_v = test_coords[:, 2] / test_coords[:, 0]
+
+            test_pixels = np.stack([test_u, test_v], axis=1)
+            print(f"Test pixel coords: {test_pixels}")
+
+            # Show which test points are visible (in bounds)
+            visible_count = 0
+            for i, (u, v) in enumerate(test_pixels):
+                print(f"Test point {i}: ({u:.6f}, {v:.6f}) - raw projected coordinates")
+                visible_count += 1  # Count all as we're not checking bounds with raw coords
+
+            print(f"Visible test points: {visible_count}/5")
+
+            # Draw test points as larger circles (using raw coordinates)
+            for i, (u, v) in enumerate(test_pixels):
+                # Draw at raw coordinates to see where they actually are
+                cv2.circle(canvas, (int(u), int(v)), 10, (255, 0, 255), -1)  # Magenta circles
+                cv2.putText(canvas, f'T{i}', (int(u)+15, int(v)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+
+            # Project some actual LiDAR points
+            if lidar_points is not None:
+                print("\n=== Projecting actual LiDAR points ===")
+                # Take a random sample of LiDAR points (not too many)
+                indices = np.random.choice(len(lidar_points), min(50, len(lidar_points)), replace=False)
+                sample_points = lidar_points[indices]
+
+                # Convert to homogeneous coordinates
+                lidar_homo = np.concatenate([sample_points[:, :3], np.ones((len(sample_points), 1))], axis=1)
+
+                # Apply transformation
+                lidar_proj = lidar_homo @ transform.T
+
+                # Filter points in front of camera (positive depth)
+                valid_mask = lidar_proj[:, 0] > 0  # x > 0 (in front)
+                lidar_proj = lidar_proj[valid_mask]
+
+                if len(lidar_proj) > 0:
+                    # Project to image coordinates
+                    lidar_proj[:, 0] = np.clip(lidar_proj[:, 0], a_min=1e-5, a_max=1e5)
+                    lidar_u = lidar_proj[:, 1] / lidar_proj[:, 0]
+                    lidar_v = lidar_proj[:, 2] / lidar_proj[:, 0]
+
+                    print(f"Projecting {len(lidar_proj)} LiDAR points")
+
+                    # Draw LiDAR points as small cyan dots (using raw coordinates)
+                    for u, v in zip(lidar_u, lidar_v):
+                        cv2.circle(canvas, (int(u), int(v)), 2, (255, 255, 0), -1)  # Cyan dots
+
+            # Draw boxes
+            for index in range(coords.shape[0]):
+                name = classes[labels[index]]
+                print(f"  Drawing box {index} for class '{name}'")
+                print(f"  Box corners: {coords[index]}")
+
+                # Draw all corners as circles first to see where they are
+                for corner_idx in range(8):
+                    cv2.circle(canvas,
+                             tuple(coords[index, corner_idx].astype(np.int32)),
+                             5, (255, 255, 0), -1)  # Yellow circles for corners
+
+                for start, end in [
+                    (0, 1),
+                    (0, 3),
+                    (0, 4),
+                    (1, 2),
+                    (1, 5),
+                    (3, 2),
+                    (3, 7),
+                    (4, 5),
+                    (4, 7),
+                    (2, 6),
+                    (5, 6),
+                    (6, 7),
+                ]:
+                    cv2.line(
+                        canvas,
+                        tuple(coords[index, start].astype(np.int32)),
+                        tuple(coords[index, end].astype(np.int32)),
+                        color or OBJECT_PALETTE[name],
+                        thickness,
+                        cv2.LINE_AA,
+                    )
+            canvas = canvas.astype(np.uint8)
+        canvas = cv2.cvtColor(canvas, cv2.COLOR_BGR2RGB)
+
+        mmcv.mkdir_or_exist(os.path.dirname(fpath))
+        mmcv.imwrite(canvas, fpath)
+    else:
+        if bboxes is not None and len(bboxes) > 0:
+            corners = bboxes.corners
+            num_bboxes = corners.shape[0]
+
+            coords = np.concatenate(
+                [corners.reshape(-1, 3), np.ones((num_bboxes * 8, 1))], axis=-1
+            )
+            transform = copy.deepcopy(transform).reshape(4, 4)
+
+            coords = coords @ transform.T
+            coords = coords.reshape(-1, 8, 4)
+
+
+            indices = np.all(coords[..., 2] > 0, axis=1)
+            # print(f"  Before depth filter: {coords.shape[0]} boxes")
+            # print(f"  After depth filter: {np.sum(indices)} boxes")
+            coords = coords[indices]
+            labels = labels[indices]
+
+            indices = np.argsort(-np.min(coords[..., 2], axis=1))
+            coords = coords[indices]
+            labels = labels[indices]
+
+            coords = coords.reshape(-1, 4)
+            coords[:, 2] = np.clip(coords[:, 2], a_min=1e-5, a_max=1e5)
+            coords[:, 0] /= coords[:, 2]
+            coords[:, 1] /= coords[:, 2]
+
+            coords = coords[..., :2].reshape(-1, 8, 2)
+            # print(f"  Final coords shape: {coords.shape}")
+            # print(f"  Coords range: x=[{coords[..., 0].min():.1f}, {coords[..., 0].max():.1f}], y=[{coords[..., 1].min():.1f}, {coords[..., 1].max():.1f}]")
+            # print(f"  Image shape: {canvas.shape}")
+            for index in range(coords.shape[0]):
+                name = classes[labels[index]]
+                # print(f"  Drawing box {index} for class '{name}'")
+                for start, end in [
+                    (0, 1),
+                    (0, 3),
+                    (0, 4),
+                    (1, 2),
+                    (1, 5),
+                    (3, 2),
+                    (3, 7),
+                    (4, 5),
+                    (4, 7),
+                    (2, 6),
+                    (5, 6),
+                    (6, 7),
+                ]:
+                    cv2.line(
+                        canvas,
+                        tuple(coords[index, start].astype(np.int32)),
+                        tuple(coords[index, end].astype(np.int32)),
+                        color or OBJECT_PALETTE[name],
+                        thickness,
+                        cv2.LINE_AA,
+                    )
+            canvas = canvas.astype(np.uint8)
+        canvas = cv2.cvtColor(canvas, cv2.COLOR_BGR2RGB)
+
+        mmcv.mkdir_or_exist(os.path.dirname(fpath))
+        mmcv.imwrite(canvas, fpath)
 
 
 def visualize_lidar(

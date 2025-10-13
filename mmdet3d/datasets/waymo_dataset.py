@@ -14,18 +14,10 @@ class WaymoDataset(Custom3DDataset):
     WAYMO_ORIGINAL_MAPPING = {
         1: "vehicle",     # 정상
         2: "pedestrian",  # 정상
-        3: "sign",        # 잘못됨 - cyclist와 바뀜
-        4: "cyclist"      # 잘못됨 - sign과 바뀜
+        3: "cyclist",        # 잘못됨 - cyclist와 바뀜
+        4: "sign"      # 잘못됨 - sign과 바뀜
     }
-
-    # 올바른 매핑 (모델 학습 시 사용된 순서)
-    CORRECT_CLASS_ORDER = ['vehicle', 'pedestrian', 'cyclist', 'sign']
-
-    def fix_class_mapping(self, gt_names):
-        """GT 클래스명을 올바른 순서로 매핑"""
-        # 매핑 수정 없이 원본 그대로 사용 (올바른 학습을 위해)
-        return gt_names
-
+    
     def __init__(self,
                  dataset_root=None,
                  ann_file=None,
@@ -66,15 +58,26 @@ class WaymoDataset(Custom3DDataset):
         """Waymo annotation info 반환"""
         info = self.data_infos[index]
 
-        # 유효 라벨만 선택
-        mask = info["num_lidar_pts"] > 0
-        gt_bboxes_3d = info["gt_boxes"][mask]
-        gt_names_3d = info["gt_names"][mask]
+        # 유효 라벨만 선택 - 안전한 처리
+        num_lidar_pts = info["num_lidar_pts"]
+        gt_boxes = info["gt_boxes"]
+        gt_names = info["gt_names"]
 
-        # *** 클래스 매핑 수정 ***
-        # Waymo converter에서 cyclist와 sign이 바뀌어 저장된 것을 수정
-        gt_names_3d = self.fix_class_mapping(gt_names_3d)
-        # print(f"Fixed GT classes: {dict(zip(*np.unique(gt_names_3d, return_counts=True)))}")
+        # numpy 배열로 변환하여 안전하게 처리
+        if isinstance(num_lidar_pts, (list, tuple)):
+            num_lidar_pts = np.array(num_lidar_pts)
+        if isinstance(gt_boxes, (list, tuple)):
+            gt_boxes = np.array(gt_boxes)
+        if isinstance(gt_names, (list, tuple)):
+            gt_names = np.array(gt_names)
+
+        # 유효한 mask 생성
+        mask = num_lidar_pts > 0
+
+        gt_bboxes_3d = gt_boxes[mask]
+        gt_names_3d = gt_names[mask]
+
+        # Use gt_names_3d as-is (no class mapping needed for now)
 
         # 클래스 인덱스 변환
         gt_labels_3d = []
@@ -170,17 +173,20 @@ class WaymoDataset(Custom3DDataset):
                 camera2ego[:3, 3] = cam["sensor2ego_translation"]
                 input_dict["camera2ego"].append(camera2ego)
 
-                # Lidar to camera transformation (following NuScenes convention)
-                lidar2camera_r = np.linalg.inv(cam["sensor2lidar_rotation"])
-                lidar2camera_t = cam["sensor2lidar_translation"] @ lidar2camera_r.T
-                lidar2camera_rt = np.eye(4, dtype=np.float32)
-                lidar2camera_rt[:3, :3] = lidar2camera_r.T
-                lidar2camera_rt[3, :3] = -lidar2camera_t
-                lidar2camera = lidar2camera_rt.T
+                # Fix naming confusion: sensor2lidar is actually camera2lidar from converter
+                camera2lidar_rot = cam["sensor2lidar_rotation"]
+                camera2lidar_trans = cam["sensor2lidar_translation"]
+
+                # Create camera2lidar matrix (this is what converter actually provides)
+                camera2lidar = np.eye(4, dtype=np.float32)
+                camera2lidar[:3, :3] = camera2lidar_rot
+                camera2lidar[:3, 3] = camera2lidar_trans
+
+                # lidar2camera is inverse of camera2lidar
+                lidar2camera = np.linalg.inv(camera2lidar)
                 input_dict["lidar2camera"].append(lidar2camera)
 
-                # Camera to lidar (inverse)
-                camera2lidar = np.linalg.inv(lidar2camera)
+                # Store camera2lidar correctly
                 input_dict["camera2lidar"].append(camera2lidar)
 
                 # Lidar to image projection
