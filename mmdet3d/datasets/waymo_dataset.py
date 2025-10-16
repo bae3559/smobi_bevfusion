@@ -77,8 +77,6 @@ class WaymoDataset(Custom3DDataset):
         gt_bboxes_3d = gt_boxes[mask]
         gt_names_3d = gt_names[mask]
 
-        # Use gt_names_3d as-is (no class mapping needed for now)
-
         # 클래스 인덱스 변환
         gt_labels_3d = []
         for cat in gt_names_3d:
@@ -99,9 +97,55 @@ class WaymoDataset(Custom3DDataset):
                 gt_velocity = np.zeros((gt_bboxes_3d.shape[0], 2), dtype=np.float32)
             gt_bboxes_3d = np.concatenate([gt_bboxes_3d, gt_velocity], axis=-1)
 
+
+        gt = gt_boxes[mask] # [x,y,z, dx,dy,dz, yaw] (EGO, center-origin)
+
+        # EGO -> LiDAR 변환행렬
+        R_le = np.asarray(info["lidar2ego_rotation"], np.float32)
+        t_le = np.asarray(info["lidar2ego_translation"], np.float32)
+        T_le = np.eye(4, dtype=np.float32)
+        T_le[:3,:3] = R_le
+        T_le[:3,3] = t_le
+        T_el = np.linalg.inv(T_le)  # EGO->LiDAR
+        R_el = R_le.T                          # 회전은 전치가 곧 역행렬
+        # ① 중심 좌표 변환
+        centers_e = gt[:, :3]
+        ones = np.ones((len(centers_e), 1), np.float32)
+        centers_l = (T_el @ np.hstack([centers_e, ones]).T).T[:, :3]
+
+        # ② yaw 변환 (방향벡터를 회전시키는 방식이 가장 안전)
+        # lidar2ego: (4x4) TOP LiDAR → EGO
+        
+        #delta = np.arctan2(R_el[1, 0], R_el[0, 0])     # 회전행렬의 yaw 성분
+
+        yaw_e = gt[:, 6]                               # EGO 기준 heading
+        #yaw_l = ((yaw_e + delta) + np.pi) % (2*np.pi) - np.pi               # LiDAR 기준 yaw
+        
+        v_e  = np.stack([np.cos(yaw_e), np.sin(yaw_e), np.zeros_like(yaw_e)], axis=1)
+        v_l  = (R_el @ v_e.T).T
+        yaw_l = np.arctan2(v_l[:, 1], v_l[:, 0]) 
+        # (-pi, pi] 정규화
+        yaw_l = (yaw_l + np.pi) % (2*np.pi) - np.pi
+        
+        # ③ LiDAR 프레임 박스 구성
+        gt_lidar = gt.copy()
+        gt_lidar[:, :3] = centers_l
+        gt_lidar[:, 6]  = yaw_l
+        # 속도 정보 추가 (Waymo는 velocity 없으므로 0으로 채움)
+        if self.with_velocity:
+            if "gt_velocity" in info:
+                gt_velocity = info["gt_velocity"][mask]
+                nan_mask = np.isnan(gt_velocity[:, 0])
+                gt_velocity[nan_mask] = [0.0, 0.0]
+            else:
+                # Waymo에는 velocity 정보가 없으므로 0으로 채움
+                gt_velocity = np.zeros((gt_lidar.shape[0], 2), dtype=np.float32)
+            gt_lidar = np.concatenate([gt_lidar, gt_velocity], axis=-1)
+
+        gt_lidar[...,6] =  -gt_lidar[..., 6] - np.pi/2
         # KITTI/NuScenes와 같은 origin 보정
         gt_bboxes_3d = LiDARInstance3DBoxes(
-            gt_bboxes_3d, box_dim=gt_bboxes_3d.shape[-1], origin=(0.5, 0.5, 0)
+            gt_lidar, box_dim=gt_lidar.shape[-1], origin=(0.5,0.5,0), with_yaw=True
         ).convert_to(self.box_mode_3d)
 
         anns_results = dict(
@@ -182,8 +226,29 @@ class WaymoDataset(Custom3DDataset):
                 camera2lidar[:3, :3] = camera2lidar_rot
                 camera2lidar[:3, 3] = camera2lidar_trans
 
+                
                 # lidar2camera is inverse of camera2lidar
-                lidar2camera = np.linalg.inv(camera2lidar)
+                #lidar2camera = np.linalg.inv(camera2lidar)
+                #input_dict["lidar2camera"].append(lidar2camera)
+                R_cl = np.asarray(cam["sensor2lidar_rotation"], dtype=np.float32)   # (3,3)
+                t_cl = np.asarray(cam["sensor2lidar_translation"], dtype=np.float32) # (3,)
+                R_lc = R_cl.T
+                t_lc = - R_cl.T @ t_cl
+
+                lidar2camera = np.eye(4, dtype=np.float32)
+                lidar2camera[:3, :3] = R_lc
+                lidar2camera[:3,  3] = t_lc
+                
+                R_conv = np.array([
+                    [ 0., -1.,  0.],   # x_cam = -y_lidar
+                    [ 0.,  0., -1.],   # y_cam = -z_lidar
+                    [ 1.,  0.,  0.],   # z_cam =  x_lidar
+                ], dtype=np.float32)
+                T_conv = np.eye(4, dtype=np.float32)
+                T_conv[:3,:3] = R_conv
+
+                lidar2camera = T_conv @ lidar2camera
+                
                 input_dict["lidar2camera"].append(lidar2camera)
 
                 # Store camera2lidar correctly
@@ -191,8 +256,10 @@ class WaymoDataset(Custom3DDataset):
 
                 # Lidar to image projection
                 lidar2image = cam_intrinsic @ lidar2camera
-                input_dict["lidar2image"].append(lidar2image)
+                #lidar2image_fixed = T_conv @ lidar2image
 
+                input_dict["lidar2image"].append(lidar2image)
+                #print("cam lidar2image", cam["data_path"], lidar2image)
                 # Augmentation matrices (identity for now)
                 input_dict["img_aug_matrix"].append(np.eye(4, dtype=np.float32))
                 input_dict["lidar_aug_matrix"].append(np.eye(4, dtype=np.float32))

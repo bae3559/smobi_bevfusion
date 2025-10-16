@@ -9,7 +9,7 @@ from matplotlib import pyplot as plt
 
 from ..bbox import LiDARInstance3DBoxes
 
-__all__ = ["visualize_camera", "visualize_lidar", "visualize_map"]
+__all__ = ["visualize_camera", "visualize_lidar", "visualize_map", "create_collage"]
 
 
 OBJECT_PALETTE = {
@@ -57,6 +57,23 @@ def visualize_camera(
     dataset_type,
     lidar_points: Optional[np.ndarray] = None,
     ) -> None:
+    '''
+    # Expand canvas size to show boxes that go outside image bounds
+    original_h, original_w = image.shape[:2]
+    expanded_w = original_w * 2  # Double width
+    expanded_h = original_h * 2  # Double height
+
+    # Create expanded black canvas
+    canvas = np.zeros((expanded_h, expanded_w, 3), dtype=np.uint8)
+
+    # Place original image in the center
+    start_y = expanded_h // 4
+    start_x = expanded_w // 4
+    canvas[start_y:start_y+original_h, start_x:start_x+original_w] = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+
+    print(f"Expanded canvas size: {expanded_w}x{expanded_h} (original: {original_w}x{original_h})")
+    print(f"Original image placed at offset: ({start_x}, {start_y})")
+    '''
     canvas = image.copy()
     canvas = cv2.cvtColor(canvas, cv2.COLOR_RGB2BGR)
     if dataset_type=="waymo":
@@ -64,140 +81,36 @@ def visualize_camera(
             corners = bboxes.corners
             num_bboxes = corners.shape[0]
 
-            # Debug: Print original 3D bbox info
-            print(f"\n=== BBOX TRANSFORMATION DEBUG ===")
-            print(f"Original bboxes shape: {corners.shape}")
-            print(f"First box corners (LiDAR coordinates):")
-            for i in range(8):
-                print(f"  Corner {i}: x={corners[0, i, 0]:.3f}, y={corners[0, i, 1]:.3f}, z={corners[0, i, 2]:.3f}")
-
             coords = np.concatenate(
                 [corners.reshape(-1, 3), np.ones((num_bboxes * 8, 1))], axis=-1
             )
-
-            print(f"\nFirst 4 homogeneous points:")
-            for i in range(4):
-                print(f"  Point {i}: {coords[i]}")
-
             transform = copy.deepcopy(transform).reshape(4, 4)
-            print(f"\nOriginal transform matrix:")
-            print(transform)
-
-            # EXPERIMENT: Use original transform directly (no coordinate system conversion)
-            print(f"\nUsing original transform directly (no coord conversion)")
-            # transform = transform  # Keep as-is
 
             coords = coords @ transform.T
             coords = coords.reshape(-1, 8, 4)
 
-
-            indices = np.all(coords[..., 0] > 0, axis=1)  # Filter by x (depth) > 0
+            indices = np.all(coords[..., 2] > 0, axis=1)
             # print(f"  Before depth filter: {coords.shape[0]} boxes")
             # print(f"  After depth filter: {np.sum(indices)} boxes")
             coords = coords[indices]
             labels = labels[indices]
 
-            indices = np.argsort(-np.min(coords[..., 0], axis=1))  # Sort by x (depth)
+            indices = np.argsort(-np.min(coords[..., 2], axis=1))
             coords = coords[indices]
             labels = labels[indices]
 
             coords = coords.reshape(-1, 4)
-            # Standard perspective projection: divide by depth (z coordinate)
-            # Draw reference points to understand camera orientation (BGR format)
-            H, W = canvas.shape[:2]
+            coords[:, 2] = np.clip(coords[:, 2], a_min=1e-5, a_max=1e5)
+            coords[:, 0] /= coords[:, 2]
+            coords[:, 1] /= coords[:, 2]
 
-            coords[:, 0] = np.clip(coords[:, 0], a_min=1e-5, a_max=1e5)  # clip z (depth)
-            u = coords[:, 1] / coords[:, 0]   # x/z for horizontal
-            v = coords[:, 2] / coords[:, 0]   # y/z for vertical
-
-            # Use raw projected coordinates without any scaling or offset
-            coords = np.stack([u, v], axis=-1).reshape(-1, 8, 2)
-            print(f"Projected coords range: u=[{u.min():.6f}, {u.max():.6f}], v=[{v.min():.6f}, {v.max():.6f}]")
-            print("final coords", coords)
-            cv2.circle(canvas, (W//2, H//2), 20, (0, 255, 0), -1)    # Green center
-            cv2.circle(canvas, (50, 50), 15, (0, 0, 255), -1)        # Red top-left
-            cv2.circle(canvas, (W-50, 50), 15, (255, 0, 0), -1)      # Blue top-right
-            cv2.circle(canvas, (W//2, H-50), 15, (0, 255, 255), -1)  # Yellow bottom-center
-
-            print(f"Image shape: {W}x{H}, Center: ({W//2}, {H//2})")
-
-            # Test LiDAR point projection first
-            print("\n=== Testing LiDAR Point Projection ===")
-            test_lidar_points = np.array([
-                [10, 0, 0, 1],    # 10m forward
-                [10, 2, 0, 1],    # 10m forward, 2m left
-                [10, -2, 0, 1],   # 10m forward, 2m right
-                [10, 0, 2, 1],    # 10m forward, 2m up
-                [5, 1, 1, 1],     # 5m forward, 1m left, 1m up
-            ])
-
-            # Apply same transformation
-            test_coords = test_lidar_points @ transform.T
-            print(f"Test coords after transform: {test_coords}")
-
-            # Project same way as bboxes
-            test_coords[:, 0] = np.clip(test_coords[:, 0], a_min=1e-5, a_max=1e5)
-            test_u = test_coords[:, 1] / test_coords[:, 0]
-            test_v = test_coords[:, 2] / test_coords[:, 0]
-
-            test_pixels = np.stack([test_u, test_v], axis=1)
-            print(f"Test pixel coords: {test_pixels}")
-
-            # Show which test points are visible (in bounds)
-            visible_count = 0
-            for i, (u, v) in enumerate(test_pixels):
-                print(f"Test point {i}: ({u:.6f}, {v:.6f}) - raw projected coordinates")
-                visible_count += 1  # Count all as we're not checking bounds with raw coords
-
-            print(f"Visible test points: {visible_count}/5")
-
-            # Draw test points as larger circles (using raw coordinates)
-            for i, (u, v) in enumerate(test_pixels):
-                # Draw at raw coordinates to see where they actually are
-                cv2.circle(canvas, (int(u), int(v)), 10, (255, 0, 255), -1)  # Magenta circles
-                cv2.putText(canvas, f'T{i}', (int(u)+15, int(v)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
-
-            # Project some actual LiDAR points
-            if lidar_points is not None:
-                print("\n=== Projecting actual LiDAR points ===")
-                # Take a random sample of LiDAR points (not too many)
-                indices = np.random.choice(len(lidar_points), min(50, len(lidar_points)), replace=False)
-                sample_points = lidar_points[indices]
-
-                # Convert to homogeneous coordinates
-                lidar_homo = np.concatenate([sample_points[:, :3], np.ones((len(sample_points), 1))], axis=1)
-
-                # Apply transformation
-                lidar_proj = lidar_homo @ transform.T
-
-                # Filter points in front of camera (positive depth)
-                valid_mask = lidar_proj[:, 0] > 0  # x > 0 (in front)
-                lidar_proj = lidar_proj[valid_mask]
-
-                if len(lidar_proj) > 0:
-                    # Project to image coordinates
-                    lidar_proj[:, 0] = np.clip(lidar_proj[:, 0], a_min=1e-5, a_max=1e5)
-                    lidar_u = lidar_proj[:, 1] / lidar_proj[:, 0]
-                    lidar_v = lidar_proj[:, 2] / lidar_proj[:, 0]
-
-                    print(f"Projecting {len(lidar_proj)} LiDAR points")
-
-                    # Draw LiDAR points as small cyan dots (using raw coordinates)
-                    for u, v in zip(lidar_u, lidar_v):
-                        cv2.circle(canvas, (int(u), int(v)), 2, (255, 255, 0), -1)  # Cyan dots
-
-            # Draw boxes
+            coords = coords[..., :2].reshape(-1, 8, 2)
+            # print(f"  Final coords shape: {coords.shape}")
+            # print(f"  Coords range: x=[{coords[..., 0].min():.1f}, {coords[..., 0].max():.1f}], y=[{coords[..., 1].min():.1f}, {coords[..., 1].max():.1f}]")
+            # print(f"  Image shape: {canvas.shape}")
             for index in range(coords.shape[0]):
                 name = classes[labels[index]]
-                print(f"  Drawing box {index} for class '{name}'")
-                print(f"  Box corners: {coords[index]}")
-
-                # Draw all corners as circles first to see where they are
-                for corner_idx in range(8):
-                    cv2.circle(canvas,
-                             tuple(coords[index, corner_idx].astype(np.int32)),
-                             5, (255, 255, 0), -1)  # Yellow circles for corners
-
+                # print(f"  Drawing box {index} for class '{name}'")
                 for start, end in [
                     (0, 1),
                     (0, 3),
@@ -290,6 +203,7 @@ def visualize_camera(
         mmcv.imwrite(canvas, fpath)
 
 
+
 def visualize_lidar(
     fpath: str,
     lidar: Optional[np.ndarray] = None,
@@ -321,6 +235,8 @@ def visualize_lidar(
 
     if bboxes is not None and len(bboxes) > 0:
         coords = bboxes.corners[:, [0, 3, 7, 4, 0], :2]
+
+
         for index in range(coords.shape[0]):
             name = classes[labels[index]]
             plt.plot(
@@ -361,3 +277,225 @@ def visualize_map(
 
     mmcv.mkdir_or_exist(os.path.dirname(fpath))
     mmcv.imwrite(canvas, fpath)
+
+
+def create_collage(
+    fpath: str,
+    camera_images: List[str],  # List of camera image paths
+    lidar_image: str,  # LiDAR image path
+    layout: str = "3x3"  # Layout configuration
+) -> None:
+    """Create a collage of camera and LiDAR images.
+
+    Args:
+        fpath: Output path for the collage
+        camera_images: List of paths to camera images (should be 6 for Waymo)
+        lidar_image: Path to LiDAR visualization image
+        layout: Layout configuration ("3x3", "2x4", etc.)
+    """
+    import cv2
+    import numpy as np
+
+    # Read all images
+    images = []
+
+    # Read camera images
+    for img_path in camera_images:
+        if os.path.exists(img_path):
+            img = cv2.imread(img_path)
+            if img is not None:
+                images.append(img)
+            else:
+                # Create placeholder if image doesn't exist
+                images.append(np.zeros((640, 960, 3), dtype=np.uint8))
+        else:
+            # Create placeholder if file doesn't exist
+            images.append(np.zeros((640, 960, 3), dtype=np.uint8))
+
+    # Read LiDAR image
+    if os.path.exists(lidar_image):
+        lidar_img = cv2.imread(lidar_image)
+        if lidar_img is not None:
+            images.append(lidar_img)
+        else:
+            images.append(np.zeros((640, 960, 3), dtype=np.uint8))
+    else:
+        images.append(np.zeros((640, 960, 3), dtype=np.uint8))
+
+    # Resize all images to consistent size
+    target_size = (480, 320)  # width, height
+    resized_images = []
+    for img in images:
+        resized = cv2.resize(img, target_size)
+        resized_images.append(resized)
+
+    # Create collage based on layout
+    if layout == "3x3":
+        # 3x3 grid layout
+        rows = []
+        for i in range(3):
+            if i < 2:
+                # First two rows: 3 camera images each
+                row_images = resized_images[i*3:(i+1)*3]
+                while len(row_images) < 3:
+                    row_images.append(np.zeros((target_size[1], target_size[0], 3), dtype=np.uint8))
+            else:
+                # Third row: 1 LiDAR image in center
+                if len(resized_images) > 6:
+                    row_images = [
+                        np.zeros((target_size[1], target_size[0], 3), dtype=np.uint8),
+                        resized_images[6],  # LiDAR image
+                        np.zeros((target_size[1], target_size[0], 3), dtype=np.uint8)
+                    ]
+                else:
+                    row_images = [np.zeros((target_size[1], target_size[0], 3), dtype=np.uint8)] * 3
+
+            row = np.hstack(row_images)
+            rows.append(row)
+
+        collage = np.vstack(rows)
+
+    elif layout == "2x4":
+        # 2x4 grid layout (2 rows, 4 columns)
+        rows = []
+        for i in range(2):
+            if i == 0:
+                # First row: 4 camera images
+                row_images = resized_images[i*4:(i+1)*4]
+                while len(row_images) < 4:
+                    row_images.append(np.zeros((target_size[1], target_size[0], 3), dtype=np.uint8))
+            else:
+                # Second row: 2 camera images + LiDAR + empty
+                row_images = resized_images[4:6]  # Last 2 camera images
+                if len(resized_images) > 6:
+                    row_images.append(resized_images[6])  # LiDAR
+                else:
+                    row_images.append(np.zeros((target_size[1], target_size[0], 3), dtype=np.uint8))
+                row_images.append(np.zeros((target_size[1], target_size[0], 3), dtype=np.uint8))  # Empty slot
+
+            row = np.hstack(row_images)
+            rows.append(row)
+
+        collage = np.vstack(rows)
+
+    elif layout == "lidar_left":
+        # Left side: Large LiDAR image, Right side: 2x3 grid of cameras
+        # LiDAR target area size
+        lidar_area_width = target_size[0] * 2  # 960
+        lidar_area_height = target_size[1] * 2  # 640
+
+        if len(resized_images) > 6:
+            # Keep original LiDAR image aspect ratio
+            original_lidar = images[6]
+            orig_h, orig_w = original_lidar.shape[:2]
+            orig_ratio = orig_w / orig_h
+
+            # Calculate new size while maintaining aspect ratio
+            if orig_ratio > (lidar_area_width / lidar_area_height):
+                # Image is wider - fit to width
+                new_width = lidar_area_width
+                new_height = int(lidar_area_width / orig_ratio)
+            else:
+                # Image is taller - fit to height
+                new_height = lidar_area_height
+                new_width = int(lidar_area_height * orig_ratio)
+
+            # Resize maintaining aspect ratio
+            lidar_resized = cv2.resize(original_lidar, (new_width, new_height))
+
+            # Create a centered image in the target area
+            lidar_canvas = np.zeros((lidar_area_height, lidar_area_width, 3), dtype=np.uint8)
+
+            # Center the resized image
+            start_y = (lidar_area_height - new_height) // 2
+            start_x = (lidar_area_width - new_width) // 2
+            lidar_canvas[start_y:start_y+new_height, start_x:start_x+new_width] = lidar_resized
+
+            lidar_resized = lidar_canvas
+        else:
+            lidar_resized = np.zeros((lidar_area_height, lidar_area_width, 3), dtype=np.uint8)
+
+        # Camera grid (2x3) on the right side
+        camera_rows = []
+        for i in range(2):  # 2 rows
+            row_images = []
+            for j in range(3):  # 3 columns
+                idx = i * 3 + j
+                if idx < len(resized_images) and idx < 6:  # Only camera images
+                    row_images.append(resized_images[idx])
+                else:
+                    row_images.append(np.zeros((target_size[1], target_size[0], 3), dtype=np.uint8))
+
+            camera_row = np.hstack(row_images)
+            camera_rows.append(camera_row)
+
+        camera_grid = np.vstack(camera_rows)
+
+        # Combine LiDAR (left) and camera grid (right)
+        collage = np.hstack([lidar_resized, camera_grid])
+
+    # Add labels to each image section
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    font_scale = 0.7
+    color = (255, 255, 255)
+    thickness = 2
+
+    # Camera labels (Waymo order)
+    camera_labels = ["FRONT", "FRONT_LEFT", "SIDE_LEFT",
+                     "FRONT_RIGHT", "SIDE_RIGHT", "BACK"]
+
+    if layout == "3x3":
+        # Add labels for 3x3 layout
+        for i in range(2):  # First two rows
+            for j in range(3):
+                idx = i * 3 + j
+                if idx < len(camera_labels):
+                    x = j * target_size[0] + 10
+                    y = i * target_size[1] + 30
+                    cv2.putText(collage, camera_labels[idx], (x, y), font, font_scale, color, thickness)
+
+        # LiDAR label (center of third row)
+        x = target_size[0] + 10
+        y = 2 * target_size[1] + 30
+        cv2.putText(collage, "LiDAR", (x, y), font, font_scale, color, thickness)
+
+    elif layout == "2x4":
+        # Add labels for 2x4 layout
+        for i in range(4):  # First row
+            if i < len(camera_labels):
+                x = i * target_size[0] + 10
+                y = 30
+                cv2.putText(collage, camera_labels[i], (x, y), font, font_scale, color, thickness)
+
+        # Second row labels
+        for i in range(2):  # Two more cameras
+            idx = 4 + i
+            if idx < len(camera_labels):
+                x = i * target_size[0] + 10
+                y = target_size[1] + 30
+                cv2.putText(collage, camera_labels[idx], (x, y), font, font_scale, color, thickness)
+
+        # LiDAR label
+        x = 2 * target_size[0] + 10
+        y = target_size[1] + 30
+        cv2.putText(collage, "LiDAR", (x, y), font, font_scale, color, thickness)
+
+    elif layout == "lidar_left":
+        # LiDAR label (left side, top-left corner)
+        cv2.putText(collage, "LiDAR", (10, 30), font, font_scale, color, thickness)
+
+        # Camera labels (right side, 2x3 grid)
+        lidar_width = target_size[0] * 2  # Width of LiDAR section
+        for i in range(2):  # 2 rows
+            for j in range(3):  # 3 columns
+                idx = i * 3 + j
+                if idx < len(camera_labels):
+                    x = lidar_width + j * target_size[0] + 10
+                    y = i * target_size[1] + 30
+                    cv2.putText(collage, camera_labels[idx], (x, y), font, font_scale, color, thickness)
+
+    # Save collage
+    mmcv.mkdir_or_exist(os.path.dirname(fpath))
+    cv2.imwrite(fpath, collage)
+    print(f"Collage saved to: {fpath}")
+    print(f"Collage size: {collage.shape[1]}x{collage.shape[0]}")

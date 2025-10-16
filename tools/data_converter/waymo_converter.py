@@ -112,6 +112,19 @@ def parse_tfrecord(tfrecord_path, out_dir):
             points_all = np.empty((0, 5), dtype=np.float32)
             #print("DEBUG: No valid points found!")
 
+        # lidar2ego: TOP LiDAR → EGO (이미 위에서 구해둠)
+        T_le = lidar2ego.astype(np.float32)
+        T_el = np.linalg.inv(T_le).astype(np.float32)  # EGO → LiDAR
+
+        # xyz만 변환 (EGO→LiDAR)
+        N = points_all.shape[0]
+        if N > 0:
+            xyz1 = np.concatenate([points_all[:, :3], np.ones((N, 1), np.float32)], axis=1)  # (N,4)
+            xyz_l = (T_el @ xyz1.T).T[:, :3]
+            points_all[:, :3] = xyz_l
+
+
+
         # range_image_cartesian (N,3) : (x,y,z)
         # intensity (N,)
         # elongation (N, )
@@ -153,14 +166,17 @@ def parse_tfrecord(tfrecord_path, out_dir):
 
             # Calibration
             calib = next((c for c in frame.context.camera_calibrations if c.name == img.name), None)
+            #print("calibartion",calib)
             if calib is not None:
                 # Waymo intrinsic parameters: [fx, fy, cx, cy, k1, k2, p1, p2, k3]
                 # We only need the first 4 for the camera matrix
                 intrinsic_params = np.array(calib.intrinsic, dtype=np.float32)
+                #print('camera_intrinsic', intrinsic_params)
                 fx, fy, cx, cy = intrinsic_params[0], intrinsic_params[1], intrinsic_params[2], intrinsic_params[3]
                 intrinsics = np.array([[fx,  0, cx],
                                      [ 0, fy, cy],
                                      [ 0,  0,  1]], dtype=np.float32)
+                # extrinsic : camera to vehicle
                 extrinsic = np.reshape(np.array(calib.extrinsic.transform), [4, 4])
             else:
                 intrinsics = np.eye(3)
@@ -238,9 +254,9 @@ def parse_tfrecord(tfrecord_path, out_dir):
             box = [
                 label.box.center_x,
                 label.box.center_y,
-                label.box.center_z,
-                label.box.length,
+                label.box.center_z ,
                 label.box.width,
+                label.box.length,
                 label.box.height,
                 label.box.heading
             ]

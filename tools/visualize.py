@@ -13,7 +13,7 @@ from torchpack.utils.config import configs
 #from torchpack.utils.tqdm import tqdm
 from tqdm import tqdm
 from mmdet3d.core import LiDARInstance3DBoxes
-from mmdet3d.core.utils import visualize_camera, visualize_lidar, visualize_map
+from mmdet3d.core.utils import visualize_camera, visualize_lidar, visualize_map, create_collage
 from mmdet3d.datasets import build_dataloader, build_dataset
 from mmdet3d.models import build_model
 
@@ -80,8 +80,7 @@ def main() -> None:
         model.eval()
 
     for i, data in enumerate(tqdm(dataflow)):
-        if i >= 1:  # Only process the first frame
-            break
+
         metas = data["metas"].data[0][0]
 
         # Handle both nuScenes (has token) and Waymo (doesn't have token)
@@ -115,39 +114,60 @@ def main() -> None:
                 outputs = None
 
         if args.mode == "gt" and "gt_bboxes_3d" in data:
-            bboxes = data["gt_bboxes_3d"].data[0][0].tensor.numpy()
-            labels = data["gt_labels_3d"].data[0][0].numpy()
-            print(f"GT labels: {labels}")
-            print(f"Unique labels: {np.unique(labels)}")
-            print(f"Object classes: {cfg.object_classes}")
-            print(f"Original GT boxes: {len(bboxes)}, labels: {np.unique(labels)}")
+            if dataset_type=="waymo":
+                bboxes = data["gt_bboxes_3d"].data[0][0].tensor.numpy()
 
-            if args.bbox_classes is not None:
-                indices = np.isin(labels, args.bbox_classes)
-                bboxes = bboxes[indices]
-                labels = labels[indices]
+                dx_mean = float(bboxes[:, 3].mean())
+                dy_mean = float(bboxes[:, 4].mean())
+                print("mean dx:", dx_mean, " mean dy:", dy_mean)  # 보통 차량은 dx > dy
 
-            # Debug: print original bbox format before LiDARInstance3DBoxes conversion
-            print(f"[DEBUG] Original GT bboxes shape: {bboxes.shape}")
-            if len(bboxes) > 0:
-                print(f"[DEBUG] First original bbox: {bboxes[0]}")
-                print(f"[DEBUG] Original bbox format: [x, y, z, dx, dy, dz, heading, ...]")
-                print(f"[DEBUG] First bbox dims: dx={bboxes[0, 3]:.2f}, dy={bboxes[0, 4]:.2f}, dz={bboxes[0, 5]:.2f}")
+                #print("boxes before LiDARInstance3DBoxes",bboxes )
+                labels = data["gt_labels_3d"].data[0][0].numpy()
 
-            bboxes[..., 2] -= bboxes[..., 5] / 2
-            bboxes = LiDARInstance3DBoxes(bboxes, box_dim=9)
+                if args.bbox_classes is not None:
+                    indices = np.isin(labels, args.bbox_classes)
+                    bboxes = bboxes[indices]
+                    labels = labels[indices]
 
-            # Debug: print corners after LiDARInstance3DBoxes conversion
-            if len(bboxes) > 0:
-                print(f"[DEBUG] After LiDARInstance3DBoxes conversion:")
-                print(f"[DEBUG] First box corners shape: {bboxes.corners.shape}")
-                corners_0 = bboxes.corners[0]
-                print(f"[DEBUG] First box corner ranges:")
-                print(f"  X: [{corners_0[:, 0].min():.2f}, {corners_0[:, 0].max():.2f}]")
-                print(f"  Y: [{corners_0[:, 1].min():.2f}, {corners_0[:, 1].max():.2f}]")
-                print(f"  Z: [{corners_0[:, 2].min():.2f}, {corners_0[:, 2].max():.2f}]")
+                bboxes[..., 2] -= bboxes[..., 5] / 2
 
-            print(f"Processing {len(bboxes)} boxes for visualization")
+                bboxes = LiDARInstance3DBoxes(bboxes, box_dim=9)
+
+                # Debug: print corners after LiDARInstance3DBoxes conversion
+                if len(bboxes) > 0:
+                    #print(f"[DEBUG] After LiDARInstance3DBoxes conversion:")
+                    #print(f"[DEBUG] First box corners shape: {bboxes.corners.shape}")
+                    corners_0 = bboxes.corners[0]
+                    #print(f"[DEBUG] First box corner ranges:")
+                    #print(f"  X: [{corners_0[:, 0].min():.2f}, {corners_0[:, 0].max():.2f}]")
+                    #print(f"  Y: [{corners_0[:, 1].min():.2f}, {corners_0[:, 1].max():.2f}]")
+                    #print(f"  Z: [{corners_0[:, 2].min():.2f}, {corners_0[:, 2].max():.2f}]")
+
+                print(f"Processing {len(bboxes)} boxes for visualization")
+            else:
+                bboxes = data["gt_bboxes_3d"].data[0][0].tensor.numpy()
+                #print("boxes before LiDARInstance3DBoxes",bboxes )
+                labels = data["gt_labels_3d"].data[0][0].numpy()
+
+                if args.bbox_classes is not None:
+                    indices = np.isin(labels, args.bbox_classes)
+                    bboxes = bboxes[indices]
+                    labels = labels[indices]
+
+                bboxes[..., 2] -= bboxes[..., 5] / 2
+                bboxes = LiDARInstance3DBoxes(bboxes, box_dim=9)
+
+                # Debug: print corners after LiDARInstance3DBoxes conversion
+                if len(bboxes) > 0:
+                    print(f"[DEBUG] After LiDARInstance3DBoxes conversion:")
+                    print(f"[DEBUG] First box corners shape: {bboxes.corners.shape}")
+                    corners_0 = bboxes.corners[0]
+                    print(f"[DEBUG] First box corner ranges:")
+                    print(f"  X: [{corners_0[:, 0].min():.2f}, {corners_0[:, 0].max():.2f}]")
+                    print(f"  Y: [{corners_0[:, 1].min():.2f}, {corners_0[:, 1].max():.2f}]")
+                    print(f"  Z: [{corners_0[:, 2].min():.2f}, {corners_0[:, 2].max():.2f}]")
+
+                print(f"Processing {len(bboxes)} boxes for visualization")
         elif args.mode == "pred" and "boxes_3d" in outputs[0]:
             bboxes = outputs[0]["boxes_3d"].tensor.numpy()
             scores = outputs[0]["scores_3d"].numpy()
@@ -180,46 +200,47 @@ def main() -> None:
         else:
             masks = None
 
+        # Store image paths for collage
+        camera_image_paths = []
+        lidar_image_path = None
+
         if "img" in data:
             for k, image_path in enumerate(metas["filename"]):
                 image = mmcv.imread(image_path)
-                # print(f"Camera {k}: image shape {image.shape}")
-                if bboxes is not None:
-                    print(f"Camera {k}: {len(bboxes)} boxes")
-                    # print(f"Camera {k} lidar2image matrix:")
-                    # print(metas['lidar2image'][k])
-                # Skip camera visualization due to transform issues
-                #print(f"Skipping camera {k} visualization")
-                # Skip the camera visualization loop entirely
-                
-                print(f"Camera {k}: Image shape {image.shape}")
-                print(f"Camera {k} lidar2image transformation", metas["lidar2image"][k])
-
-                # Get LiDAR points for projection testing
-                lidar_points = None
-                if "points" in data:
-                    lidar_points = data["points"].data[0][0].numpy()
+                camera_output_path = os.path.join(args.out_dir, f"camera-{k}", f"{name}.png")
+                camera_image_paths.append(camera_output_path)
 
                 visualize_camera(
-                    os.path.join(args.out_dir, f"camera-{k}", f"{name}.png"),
+                    camera_output_path,
                     image,
                     bboxes=bboxes,
                     labels=labels,
                     transform=metas["lidar2image"][k],
                     classes=cfg.object_classes,
-                    dataset_type=dataset_type,
-                    lidar_points=lidar_points,
+                    dataset_type=dataset_type
                 )
+
         if "points" in data:
             lidar = data["points"].data[0][0].numpy()
+            lidar_image_path = os.path.join(args.out_dir, "lidar", f"{name}.png")
             visualize_lidar(
-                os.path.join(args.out_dir, "lidar", f"{name}.png"),
+                lidar_image_path,
                 lidar,
                 bboxes=bboxes,
                 labels=labels,
                 xlim=[cfg.point_cloud_range[d] for d in [0, 3]],
                 ylim=[cfg.point_cloud_range[d] for d in [1, 4]],
                 classes=cfg.object_classes,
+            )
+
+        # Create collage if we have both camera and lidar images
+        if camera_image_paths and lidar_image_path:
+            collage_path = os.path.join(args.out_dir, "collage", f"{name}.png")
+            create_collage(
+                collage_path,
+                camera_image_paths,
+                lidar_image_path,
+                layout="lidar_left"  # Left: large LiDAR, Right: 2x3 cameras
             )
 
         if masks is not None:
