@@ -105,7 +105,7 @@ def main() -> None:
                     # Try to get model predictions
                     # Temporarily set test_mode to avoid some errors
                     model.module.test_cfg = getattr(model.module, 'test_cfg', {})
-                    outputs = model(**data, return_loss=False)
+                    outputs = model(**data, return_loss=True)
                 print("Prediction successful!")
             except Exception as e:
                 print(f"Prediction failed: {e}")

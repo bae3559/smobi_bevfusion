@@ -21,8 +21,8 @@ OBJECT_PALETTE = {
     "barrier": (112, 128, 144),
     "motorcycle": (255, 61, 99),
     "bicycle": (220, 20, 60),
-    "pedestrian": (0, 0, 230),
-    "traffic_cone": (47, 79, 79),
+    "pedestrian": (0, 0, 230), # 쨍한 파란색
+    "traffic_cone": (47, 79, 79), # 약간 퍼런색
     # Waymo classes
     "vehicle": (255, 158, 0),    # Same as car
     "cyclist": (220, 20, 60),    # Same as bicycle
@@ -497,5 +497,5 @@ def create_collage(
     # Save collage
     mmcv.mkdir_or_exist(os.path.dirname(fpath))
     cv2.imwrite(fpath, collage)
-    print(f"Collage saved to: {fpath}")
-    print(f"Collage size: {collage.shape[1]}x{collage.shape[0]}")
+    #print(f"Collage saved to: {fpath}")
+    #print(f"Collage size: {collage.shape[1]}x{collage.shape[0]}")

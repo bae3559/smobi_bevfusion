@@ -36,6 +36,11 @@ model:
       backbone:
         sparse_shape: [1440, 1440, 41]
 
+  fuser:
+    type: ConvFuser
+    in_channels: [80, 256]
+    out_channels: 256
+
   heads:
     object:
       train_cfg:
