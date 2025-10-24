@@ -47,7 +47,8 @@ train_pipeline:
     stop_epoch: ${gt_paste_stop_epoch}
     db_sampler:
       dataset_root: ${dataset_root}
-      info_path: data/waymo/Waymo_mini/waymo_dbinfos_train.pkl
+      info_path: data/waymo/Waymo_mini/waymo_dbinfos_train.pkl ##이거 mini일때
+      #info_path: data/waymo/Waymo/waymo_dbinfos_train.pkl ##이거 mini 아닐때
       rate: 1.0
       prepare: 
         filter_by_difficulty: [-1]

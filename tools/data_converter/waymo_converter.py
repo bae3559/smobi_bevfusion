@@ -248,19 +248,45 @@ def parse_tfrecord(tfrecord_path, out_dir):
         ### waymo는 gt_velocity가 제공되지 않는다.
         ### vx = 
         gt_boxes, gt_names, num_pts = [], [], []
+
+        # L->E (lidar2ego)
+        R_le = lidar2ego[:3, :3].astype(np.float32)
+        t_le = lidar2ego[:3, 3].astype(np.float32)
+        T_le = np.eye(4, dtype=np.float32)
+        T_le[:3, :3] = R_le
+        T_le[:3, 3]  = t_le
+
+        # E->L
+        T_el = np.linalg.inv(T_le).astype(np.float32)
+        R_el = T_el[:3, :3]  # = R_le.T
         for label in frame.laser_labels:
             cls_name = WAYMO_CLASSES.get(label.type, "unknown")
 
-            box = [
-                label.box.center_x,
-                label.box.center_y,
-                label.box.center_z ,
-                label.box.width,
-                label.box.length,
-                label.box.height,
-                label.box.heading
-            ]
-            gt_boxes.append(box)
+            # EGO 기준 중심/치수/yaw (Waymo 정의 그대로)
+            cx_e = float(label.box.center_x)
+            cy_e = float(label.box.center_y)
+            cz_e = float(label.box.center_z)
+
+            dx = float(label.box.width)  # [length, width, height]
+            dy = float(label.box.length)
+            dz = float(label.box.height)
+
+            yaw_e = float(label.box.heading)
+
+            # --- 중심: EGO -> LiDAR ---
+            p_e = np.array([cx_e, cy_e, cz_e, 1.0], dtype=np.float32)
+            p_l = (T_el @ p_e)[:3]  # (3,)
+
+            # --- yaw: EGO -> LiDAR (방향 벡터 회전) ---
+            v_e = np.array([np.cos(yaw_e), np.sin(yaw_e), 0.0], dtype=np.float32)  # EGO 평면 방향
+            v_l = (R_el @ v_e)  # LiDAR 평면 방향
+            yaw_l = np.arctan2(v_l[1], v_l[0])
+            # [-pi, pi) 정규화
+            yaw_l = (yaw_l + np.pi) % (2 * np.pi) - np.pi
+
+            # LiDAR 기준 박스: [x, y, z, dx, dy, dz, yaw]
+            box_l = [p_l[0], p_l[1], p_l[2], dx, dy, dz, -yaw_l-np.pi/2]
+            gt_boxes.append(box_l)
             gt_names.append(cls_name)
             num_pts.append(label.num_lidar_points_in_box)
 
@@ -288,15 +314,31 @@ def parse_tfrecord(tfrecord_path, out_dir):
 
     return infos
 
-def create_waymo_infos(root_path, out_dir, version="v1.0-mini", extra_tag="waymo"):
-    tfrecords = sorted(Path(root_path).rglob("*.tfrecord"))
-    all_infos = []
-    for tfrecord in tfrecords:
-        infos = parse_tfrecord(str(tfrecord), out_dir)
-        all_infos.extend(infos)
-    out_file = Path(out_dir) / f"{extra_tag}_infos_train.pkl"
-    mmcv.dump(dict(infos=all_infos, metadata=dict(version=version)), str(out_file))
-    print(f"Saved {len(all_infos)} infos at {out_file}")
+def create_waymo_infos(root_path, out_dir, version, extra_tag="waymo"):
+    if version == "trainval":
+        train_tfrecords = sorted(Path(root_path , "/training").rglob("*.tfrecord"))
+        val_tfrecords = sorted(Path(root_path , "/validatiaon").rglob("*.tfrecord"))
+        train_infos = []
+        for tfrecord in train_tfrecords:
+            train_infos.extend(parse_tfrecord(str(tfrecord), out_dir))
+        out_file_train = Path(out_dir) / f"{extra_tag}_infos_train.pkl"
+        mmcv.dump(dict(infos=train_infos, metadata=dict(version=version)), str(out_file_train))
+        print(f"Saved {len(train_infos)} frames to {out_file_train}")
+        val_infos = []
+        for tfrecord in val_tfrecords:
+            val_infos.extend(parse_tfrecord(str(tfrecord), out_dir))
+        out_file_val = Path(out_dir) / f"{extra_tag}_infos_val.pkl"
+        mmcv.dump(dict(infos=val_infos, metadata=dict(version=version)), str(out_file_val))
+        print(f"Saved {len(val_infos)} frames to {out_file_val}")
+    elif version== "test":
+        test_tfrecords = sorted(Path(root_path , "/test").rglob("*.tfrecord"))
+        test_infos = []
+        for tfrecord in test_tfrecords:
+            test_infos.extend(parse_tfrecord(str(tfrecord), out_dir))
+        out_file_val = Path(out_dir) / f"{extra_tag}_infos_val.pkl"
+        mmcv.dump(dict(infos=test_infos, metadata=dict(version=version)), str(out_file_val))
+        print(f"Saved {len(test_infos)} frames to {out_file_val}")
+
 
 
 def create_waymo_infos_mini(root_path, out_dir, version="mini", extra_tag="waymo"):

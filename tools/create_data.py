@@ -146,3 +146,32 @@ if __name__ == "__main__":
             f"{args.out_dir}/{args.extra_tag}_infos_train.pkl",
             load_augmented=load_augmented,
         )
+    elif args.dataset == 'waymo' and args.version!="mini":
+        train_version = f"{args.version}-trainval"
+        waymo_converter.create_waymo_infos(
+            root_path=args.root_path,
+            out_dir=args.out_dir,
+            version=train_version,
+            extra_tag=args.extra_tag
+        )
+        create_groundtruth_database(
+            "WaymoDataset",
+            args.root_path,
+            args.extra_tag,
+            f"{args.out_dir}/{args.extra_tag}_infos_train.pkl",
+            load_augmented=load_augmented,
+        )
+        test_version = f"{args.version}-test"
+        waymo_converter.create_waymo_infos(
+            root_path=args.root_path,
+            out_dir=args.out_dir,
+            version=test_version,
+            extra_tag=args.extra_tag
+        )
+        create_groundtruth_database(
+            "WaymoDataset",
+            args.root_path,
+            args.extra_tag,
+            f"{args.out_dir}/{args.extra_tag}_infos_train.pkl",
+            load_augmented=load_augmented,
+        )

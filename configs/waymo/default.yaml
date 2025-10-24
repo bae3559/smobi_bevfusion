@@ -75,33 +75,32 @@ train_pipeline:
     with_bbox_3d: true
     with_label_3d: true
     with_attr_label: False
-  # Disable ObjectPaste for now - GT database not available
-  # -
-  #   type: ObjectPaste
-  #   stop_epoch: ${gt_paste_stop_epoch}
-  #   db_sampler:
-  #     dataset_root: ${dataset_root}
-  #     info_path: data/waymo/Waymo_mini/waymo_dbinfos_train.pkl
-  #     rate: 1.0
-  #     prepare:
-  #       filter_by_difficulty: [-1]
-  #       filter_by_min_points:
-  #         vehicle: 5
-  #         pedestrian: 5
-  #         cyclist: 5
-  #         sign: 5
-  #     classes: ${object_classes}
-  #     sample_groups:
-  #       vehicle: 3
-  #       pedestrian: 6
-  #       cyclist: 6
-  #       sign: 4
-  #     points_loader:
-  #       type: LoadPointsFromFile
-  #       coord_type: LIDAR
-  #       load_dim: ${load_dim}
-  #       use_dim: ${use_dim}
-  #       reduce_beams: ${reduce_beams}
+  -
+    type: ObjectPaste
+    stop_epoch: ${gt_paste_stop_epoch}
+    db_sampler:
+      dataset_root: ${dataset_root}
+      info_path: data/waymo/Waymo_mini/waymo_dbinfos_train.pkl
+      rate: 1.0
+      prepare:
+        filter_by_difficulty: [-1]
+        filter_by_min_points:
+          vehicle: 5
+          pedestrian: 5
+          cyclist: 5
+          sign: 5
+      classes: ${object_classes}
+      sample_groups:
+        vehicle: 3
+        pedestrian: 6
+        cyclist: 6
+        sign: 4
+      points_loader:
+        type: LoadPointsFromFile
+        coord_type: LIDAR
+        load_dim: ${load_dim}
+        use_dim: ${use_dim}
+        reduce_beams: ${reduce_beams}
   -
     type: ImageAug3D
     final_dim: ${image_size}

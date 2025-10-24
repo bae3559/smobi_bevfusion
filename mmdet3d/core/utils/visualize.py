@@ -415,24 +415,38 @@ def create_collage(
         else:
             lidar_resized = np.zeros((lidar_area_height, lidar_area_width, 3), dtype=np.uint8)
 
-        # Camera grid (2x3) on the right side
+        # # Camera grid (2x3) on the right side
+        # camera_rows = []
+        # for i in range(2):  # 2 rows
+        #     row_images = []
+        #     for j in range(3):  # 3 columns
+        #         idx = i * 3 + j
+        #         if idx < len(resized_images) and idx < 6:  # Only camera images
+        #             row_images.append(resized_images[idx])
+        #         else:
+        #             row_images.append(np.zeros((target_size[1], target_size[0], 3), dtype=np.uint8))
+
+        #     camera_row = np.hstack(row_images)
+        #     camera_rows.append(camera_row)
+
+        # camera_grid = np.vstack(camera_rows)
+        grid_map = [[1, 0, 3],
+                    [2, 5, 4]]
+
         camera_rows = []
         for i in range(2):  # 2 rows
             row_images = []
-            for j in range(3):  # 3 columns
-                idx = i * 3 + j
-                if idx < len(resized_images) and idx < 6:  # Only camera images
-                    row_images.append(resized_images[idx])
+            for j in range(3):  # 3 cols
+                k = grid_map[i][j]
+                if k < len(resized_images) and k < 6:   # 여전히 '카메라 6장만' 사용
+                    row_images.append(resized_images[k])
                 else:
                     row_images.append(np.zeros((target_size[1], target_size[0], 3), dtype=np.uint8))
+            camera_rows.append(np.hstack(row_images))
 
-            camera_row = np.hstack(row_images)
-            camera_rows.append(camera_row)
-
-        camera_grid = np.vstack(camera_rows)
-
+        camera_block = np.vstack(camera_rows)
         # Combine LiDAR (left) and camera grid (right)
-        collage = np.hstack([lidar_resized, camera_grid])
+        collage = np.hstack([lidar_resized, camera_block])
 
     # Add labels to each image section
     font = cv2.FONT_HERSHEY_SIMPLEX
@@ -442,7 +456,7 @@ def create_collage(
 
     # Camera labels (Waymo order)
     camera_labels = ["FRONT", "FRONT_LEFT", "SIDE_LEFT",
-                     "FRONT_RIGHT", "SIDE_RIGHT", "BACK"]
+                    "FRONT_RIGHT", "SIDE_RIGHT", "BACK"]
 
     if layout == "3x3":
         # Add labels for 3x3 layout
@@ -480,20 +494,31 @@ def create_collage(
         y = target_size[1] + 30
         cv2.putText(collage, "LiDAR", (x, y), font, font_scale, color, thickness)
 
+    # elif layout == "lidar_left":
+    #     # LiDAR label (left side, top-left corner)
+    #     cv2.putText(collage, "LiDAR", (10, 30), font, font_scale, color, thickness)
+
+    #     # Camera labels (right side, 2x3 grid)
+    #     lidar_width = target_size[0] * 2  # Width of LiDAR section
+    #     for i in range(2):  # 2 rows
+    #         for j in range(3):  # 3 columns
+    #             idx = i * 3 + j
+    #             if idx < len(camera_labels):
+    #                 x = lidar_width + j * target_size[0] + 10
+    #                 y = i * target_size[1] + 30
+    #                 cv2.putText(collage, camera_labels[idx], (x, y), font, font_scale, color, thickness)
     elif layout == "lidar_left":
-        # LiDAR label (left side, top-left corner)
+        grid_map = [[1, 0, 3],   # 1행: FRONT_LEFT, FRONT, FRONT_RIGHT
+            [2, 5, 4]]   # 2행: SIDE_LEFT, BACK, SIDE_RIGHT
         cv2.putText(collage, "LiDAR", (10, 30), font, font_scale, color, thickness)
-
-        # Camera labels (right side, 2x3 grid)
         lidar_width = target_size[0] * 2  # Width of LiDAR section
-        for i in range(2):  # 2 rows
-            for j in range(3):  # 3 columns
-                idx = i * 3 + j
-                if idx < len(camera_labels):
-                    x = lidar_width + j * target_size[0] + 10
-                    y = i * target_size[1] + 30
-                    cv2.putText(collage, camera_labels[idx], (x, y), font, font_scale, color, thickness)
-
+        for i in range(2):
+            for j in range(3):
+                old_idx = grid_map[i][j]
+                x = lidar_width + j * target_size[0] + 10
+                y = i * target_size[1] + 30
+                cv2.putText(collage, camera_labels[old_idx], (x, y), font, font_scale, color, thickness)
+                # 이미지도 camera_images[old_idx]로 배치
     # Save collage
     mmcv.mkdir_or_exist(os.path.dirname(fpath))
     cv2.imwrite(fpath, collage)

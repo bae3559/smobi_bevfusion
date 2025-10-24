@@ -1,0 +1,644 @@
+diff --git a/.gitignore b/.gitignore
+index 16b8a71..6cd865c 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -139,6 +139,12 @@ visualize/*
+ work_dirs/*
+ viz_waymo_train_result/
+ .dist_test/
++
++# Large dataset files
++*.tar.gz
++nuscenedataset.tar.gz
++wamodataset.tar.gz
++
+ # torch hipify generated files
+ *_hip.*
+ *.hip
+diff --git a/01999d76-0a8f-7d7d-84a1-086b441416c4.pem b/01999d76-0a8f-7d7d-84a1-086b441416c4.pem
+new file mode 100644
+index 0000000..b635d2c
+--- /dev/null
++++ b/01999d76-0a8f-7d7d-84a1-086b441416c4.pem
+@@ -0,0 +1,27 @@
++-----BEGIN RSA PRIVATE KEY-----
++MIIEpwIBAAKCAQEAvC9H6UEnerGQg03NpzdC1VzBjrdud9WHau4I8aOzHLJDi6DR
++pIBd+PtL17A1CJnAWukSi481yAkoC9bh9UO2TbEvD5H4oqd31LuCN90w1nzGjwAF
++oL+YlFDO/npEgnf2b9erbTRMhhsgLYPR7RHcXS4NgqMbhDmy5mEycPQrPu5cr5tw
++WxxXiI9P7PPr8m9rfXA6Bymh7I0IfkCbWkIPBfT6nSHsJn8BdRo2JfyKXcetZgjl
++UiytzBwX9UTxsCVWOP6rXs9bXmGDrDGnFg5+CbwBQ1JOdEtoTwdvOdGKCfZLjYs6
++E7Bu0IdXYWxaK17q97n8cxbQMWzHCeEzkc/4qQIDAQABAoIBAAsS2y/yKhERvtfD
++Lc1ftpqYlTlBOQprMcdMj5EsmV8gbFIcmgmMljsPCpT8JPrHFWckHPfCax9Ezqr3
++r58/p0wmF4dahx+HLEmD6TNBXFzaxdJnZW1iqOddY/jcmAh3Z7SII+nOsIwZr4iO
++H73MFcQT8C6WS4m53XmqEY5NB/hxc0IZsWNJFQhth7OLjSpPa5I8nLYbQbHzY1Qf
++GgoBpFM9GCL/7zi5///BCBEM8GZRsGz5I+58is6qdtGy2iZiPK18Y0G1VRlYLYVp
++fyUr78IuVKUnen9JAi+yccveju9fa5ECRWPavkdZijH2AgAThNQkbOA0i9j8/T/h
++d3LYEmsCggCBAL5wJyFjzysj15eCjC/estE/0SmPM583Jaa14mNQ4Kn8scMrkroU
++8ko+ap9LMsCjO0tgR+uGAfmQoSsu8FvmY0EzuGxfMdHKahsSyuIgBxnpLbzIQuRk
++e/txfb9Le2EMdFnGtvqFDXHIgKJUQAV4Qzw4ECoTGvof/O9rx/xC4Z83AoIAgQD8
+++IdtVkMYcfTh3ajoQ1wXffdJ6D9PERIyL8MCKTLF3IbeFoMy9DpBRSevaQsT05F6
++X6m/o5OItJu35B/SaXI4npP2b+1GOOfq3efpILTqtS2HMe7Pm5vyxrolZ8ICfl0S
++1t75v68HHXq9LuGngUEgyAK0j54aI9Xa0ADEDK5XHwKCAIAzLJonS9Xg5tnJWghn
++2LU+q6J+Q4AAueYBPYEfZR1qMIBoTO452OUe9FTch22U/IgzgiTxcmpXcPkOTKfE
++Wk2zuL1HSfFuSbFnow4n46lk2hczUrE/BI2YjO/YluUJuDoP4elLurNZLyL5/B/U
++GHQg24PkeovWSQBEKjdsX2CX0wKCAIAx/owFN78a3aqf2MbA4E8a9XIh0Rxx69XE
++xVus2aeHIwYkbh6Pu2Sn8ZreN8xQpsdhf/Z0QUevBMKhnRwM4XoJZo2nbodeEXEE
++Icbrc+NNX3EX/u5LaV1wpYW0TsUw6PhL+NsoUJGuvky7hsBh8lGEwQKH3LpKQDrL
++e8Aq/raV0QKCAIA6+CiqEKFnFWnvhwcSw+I4hE8glBFlQpT5ARuH0WKjjTOnpgFi
++5h/N9m/rrEUwh9RQnS7fuS8hpllmjHi+E7CdYrz2p+b6SdCH8Kdj8s8YPeLflKLe
++Ai56hrqYAOX+D00OWrjU8wwBfcKe+gir4wv6iwWXPpYaUrim/vUd6/0bKQ==
++-----END RSA PRIVATE KEY-----
+diff --git a/01999d76-0a8f-7d7d-84a1-086b441416c4.pub b/01999d76-0a8f-7d7d-84a1-086b441416c4.pub
+new file mode 100644
+index 0000000..342f85a
+--- /dev/null
++++ b/01999d76-0a8f-7d7d-84a1-086b441416c4.pub
+@@ -0,0 +1 @@
++ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC8L0fpQSd6sZCDTc2nN0LVXMGOt2531Ydq7gjxo7McskOLoNGkgF34+0vXsDUImcBa6RKLjzXICSgL1uH1Q7ZNsS8Pkfiip3fUu4I33TDWfMaPAAWgv5iUUM7+ekSCd/Zv16ttNEyGGyAtg9HtEdxdLg2CoxuEObLmYTJw9Cs+7lyvm3BbHFeIj0/s8+vyb2t9cDoHKaHsjQh+QJtaQg8F9PqdIewmfwF1GjYl/Ipdx61mCOVSLK3MHBf1RPGwJVY4/qtez1teYYOsMacWDn4JvAFDUk50S2hPB2850YoJ9kuNizoTsG7Qh1dhbForXur3ufxzFtAxbMcJ4TORz/ip
+diff --git a/configs/waymo/default.yaml b/configs/waymo/default.yaml
+index 69bfc8c..6e29f1a 100644
+--- a/configs/waymo/default.yaml
++++ b/configs/waymo/default.yaml
+@@ -75,33 +75,32 @@ train_pipeline:
+     with_bbox_3d: true
+     with_label_3d: true
+     with_attr_label: False
+-  # Disable ObjectPaste for now - GT database not available
+-  # -
+-  #   type: ObjectPaste
+-  #   stop_epoch: ${gt_paste_stop_epoch}
+-  #   db_sampler:
+-  #     dataset_root: ${dataset_root}
+-  #     info_path: data/waymo/Waymo_mini/waymo_dbinfos_train.pkl
+-  #     rate: 1.0
+-  #     prepare:
+-  #       filter_by_difficulty: [-1]
+-  #       filter_by_min_points:
+-  #         vehicle: 5
+-  #         pedestrian: 5
+-  #         cyclist: 5
+-  #         sign: 5
+-  #     classes: ${object_classes}
+-  #     sample_groups:
+-  #       vehicle: 3
+-  #       pedestrian: 6
+-  #       cyclist: 6
+-  #       sign: 4
+-  #     points_loader:
+-  #       type: LoadPointsFromFile
+-  #       coord_type: LIDAR
+-  #       load_dim: ${load_dim}
+-  #       use_dim: ${use_dim}
+-  #       reduce_beams: ${reduce_beams}
++  -
++    type: ObjectPaste
++    stop_epoch: ${gt_paste_stop_epoch}
++    db_sampler:
++      dataset_root: ${dataset_root}
++      info_path: data/waymo/Waymo_mini/waymo_dbinfos_train.pkl
++      rate: 1.0
++      prepare:
++        filter_by_difficulty: [-1]
++        filter_by_min_points:
++          vehicle: 5
++          pedestrian: 5
++          cyclist: 5
++          sign: 5
++      classes: ${object_classes}
++      sample_groups:
++        vehicle: 3
++        pedestrian: 6
++        cyclist: 6
++        sign: 4
++      points_loader:
++        type: LoadPointsFromFile
++        coord_type: LIDAR
++        load_dim: ${load_dim}
++        use_dim: ${use_dim}
++        reduce_beams: ${reduce_beams}
+   -
+     type: ImageAug3D
+     final_dim: ${image_size}
+diff --git a/configs/waymo/det/default.yaml b/configs/waymo/det/default.yaml
+index 4551b0c..373909d 100644
+--- a/configs/waymo/det/default.yaml
++++ b/configs/waymo/det/default.yaml
+@@ -47,7 +47,8 @@ train_pipeline:
+     stop_epoch: ${gt_paste_stop_epoch}
+     db_sampler:
+       dataset_root: ${dataset_root}
+-      info_path: data/waymo/Waymo_mini/waymo_dbinfos_train.pkl
++      info_path: data/waymo/Waymo_mini/waymo_dbinfos_train.pkl ##이거 mini일때
++      #info_path: data/waymo/Waymo/waymo_dbinfos_train.pkl ##이거 mini 아닐때
+       rate: 1.0
+       prepare: 
+         filter_by_difficulty: [-1]
+diff --git a/docker_gpulive/Dockerfile b/docker_gpulive/Dockerfile
+new file mode 100644
+index 0000000..78c2da0
+--- /dev/null
++++ b/docker_gpulive/Dockerfile
+@@ -0,0 +1,194 @@
++FROM nvidia/cuda:11.3.1-devel-ubuntu20.04
++# 환경변수 설정 (비인터랙티브 설치 + 타임존 지정)
++ENV DEBIAN_FRONTEND=noninteractive
++ENV TZ=Asia/Seoul
++
++# root로 전환
++USER root   
++
++# 시스템 패키지 업데이트 및 필수 패키지 설치
++# - openssh-server: SSH 서버 (원격 접속용)
++# - supervisor: 여러 프로세스를 관리하는 데몬
++# - sudo: 관리자 권한 실행을 위한 패키지
++# - python3-pip: Python 패키지 관리자
++RUN apt update \
++    && apt install -y openssh-server \
++    supervisor \
++    sudo \
++    python3-pip 
++
++# 시스템 패키지 설치
++RUN apt-get update && apt-get install wget -yq
++RUN apt-get install build-essential g++ gcc -y
++ENV DEBIAN_FRONTEND=noninteractive
++RUN apt-get install libgl1-mesa-glx libglib2.0-0 -y
++RUN apt-get install openmpi-bin openmpi-common libopenmpi-dev libgtk2.0-dev git -y
++RUN apt-get update && apt-get install python3.8 python3.8-dev python3-pip -y
++
++# python / pip 심볼릭 링크
++RUN rm -f /usr/bin/python && ln -s /usr/bin/python3.8 /usr/bin/python && \
++    rm -f /usr/bin/pip && ln -s /usr/bin/pip3 /usr/bin/pip
++
++# pip 업그레이드
++RUN pip install --upgrade pip
++
++# PyTorch + CUDA 11.3
++RUN pip install torch==1.10.1+cu113 torchvision==0.11.2+cu113 torchaudio==0.10.1 \
++    --extra-index-url https://download.pytorch.org/whl/cu113
++
++# 기타 패키지
++RUN pip install -U openmim "numpy<1.24"
++RUN pip install Pillow==8.4.0
++RUN pip install tqdm
++RUN pip install torchpack
++RUN pip install mmdet==2.20.0
++RUN pip install nuscenes-devkit
++RUN pip install mpi4py==3.0.3
++RUN pip install numba==0.48.0
++RUN pip install mmcv-full==1.4.0 -f https://download.openmmlab.com/mmcv/dist/cu113/torch1.10.0/index.html
++RUN pip install yapf==0.32.0
++RUN pip install --default-timeout=100 tensorflow==2.12.0 waymo-open-dataset-tf-2-12-0
++
++# 패키지 캐시 정리 (이미지 크기 최적화)
++RUN apt clean
++
++### SSH 공개키 설정 ###
++# SSH 접속을 위한 공개키를 빌드 시점에 전달받습니다
++# PEM 키에서 추출한 공개키 내용을 입력하세요
++# 예시) ARG RSA_PUBLIC_KEY="ssh-rsa AAAAB3NEmoUDZ~~~"
++ARG RSA_PUBLIC_KEY="ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC8L0fpQSd6sZCDTc2nN0LVXMGOt2531Ydq7gjxo7McskOLoNGkgF34+0vXsDUImcBa6RKLjzXICSgL1uH1Q7ZNsS8Pkfiip3fUu4I33TDWfMaPAAWgv5iUUM7+ekSCd/Zv16ttNEyGGyAtg9HtEdxdLg2CoxuEObLmYTJw9Cs+7lyvm3BbHFeIj0/s8+vyb2t9cDoHKaHsjQh+QJtaQg8F9PqdIewmfwF1GjYl/Ipdx61mCOVSLK3MHBf1RPGwJVY4/qtez1teYYOsMacWDn4JvAFDUk50S2hPB2850YoJ9kuNizoTsG7Qh1dhbForXur3ufxzFtAxbMcJ4TORz/ip"
++##########################
++
++### 사용자 계정 설정 ###
++# 기본 ubuntu 계정을 삭제하고 새로 생성 (보안상 이유)
++RUN if getent passwd ubuntu >/dev/null 2>&1; then \
++      (command -v deluser >/dev/null 2>&1 && deluser --remove-home ubuntu) \
++      || (command -v userdel >/dev/null 2>&1 && userdel -r ubuntu || true); \
++    fi
++# ubuntu 사용자 그룹 및 계정 생성
++# - UID/GID: 1001 (일반적으로 첫 번째 사용자)
++# - 홈 디렉토리 생성 (-m)
++# - 기본 셸: bash (-s /bin/bash)
++# - sudo 권한 부여 (패스워드 없이 모든 명령 실행 가능)
++RUN groupadd -g 1001 ubuntu \
++    && useradd -u 1001 -g 1001 -m -s /bin/bash ubuntu \
++    && echo "ubuntu ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/ubuntu
++
++
++### SSH 서버 설정 ###
++# SSH 서버 설정 및 보안 강화
++RUN mkdir -p /var/run/sshd \
++    && echo "PermitRootLogin no" >> /etc/ssh/sshd_config \
++    && echo "PasswordAuthentication no" >> /etc/ssh/sshd_config \
++    && echo "PubkeyAuthentication yes" >> /etc/ssh/sshd_config \
++    && echo "AuthorizedKeysFile .ssh/authorized_keys" >> /etc/ssh/sshd_config
++
++
++# ubuntu 사용자의 SSH 공개키 등록
++RUN mkdir -p /home/ubuntu/.ssh
++
++# 공개키를 authorized_keys에 추가하고 적절한 권한 설정
++# - chmod 700: .ssh 디렉토리 (소유자만 읽기/쓰기/실행)
++# - chmod 600: authorized_keys 파일 (소유자만 읽기/쓰기)
++RUN echo $RSA_PUBLIC_KEY >> /home/ubuntu/.ssh/authorized_keys \
++    && chown -R ubuntu:ubuntu /home/ubuntu/.ssh \
++    && chmod 700 /home/ubuntu/.ssh \
++    && chmod 600 /home/ubuntu/.ssh/authorized_keys
++
++### 추가 사용자 생성 (선택사항) ###
++# 필요시 NEW_USER 변수에 원하는 사용자명을 입력하세요
++# 추가 사용자 생성 및 설정
++# - UID/GID: 1002 (두 번째 사용자)
++# - ubuntu 그룹에 추가하여 ubuntu 사용자와 파일 공유 가능
++# - sudo 권한 부여
++##########################################
++# ARG NEW_USER={새로운 사용자}
++# RUN groupadd -g 1002 $NEW_USER \
++#     && useradd -u 1002 -g 1002 -m -s /bin/bash $NEW_USER \
++#     && echo "$NEW_USER ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/$NEW_USER \
++#     && usermod -aG ubuntu $NEW_USER
++
++# RUN mkdir -p /home/$NEW_USER/.ssh \
++#     && echo "$RSA_PUBLIC_KEY" >> /home/$NEW_USER/.ssh/authorized_keys \
++#     && chown -R $NEW_USER:ubuntu /home/$NEW_USER/.ssh \
++#     && chmod 700 /home/$NEW_USER/.ssh \
++#     && chmod 600 /home/$NEW_USER/.ssh/authorized_keys
++##########################################
++
++### Python 및 Jupyter 환경 설정 ###
++# 데이터 분석 및 머신러닝을 위한 Python 라이브러리 설치
++# --break-system-packages: 시스템 패키지와의 충돌을 무시하고 설치
++RUN python3 -m pip install --no-cache-dir --break-system-packages \
++    jupyterlab==4.2.5 \
++    notebook==7.2.2 \
++    ipykernel==6.29.5 \
++    jupyter-client==8.6.0 \
++    nbformat==5.10.4 \
++    nbconvert==7.14.2 \
++    ipywidgets==8.1.2
++
++# pandas \            
++# matplotlib==3.10.3 \       
++# seaborn==0.13.2 \           
++# scikit-learn==1.7.0 \        
++# tqdm==4.67.1                 
++### Supervisor 설정 ###
++# 여러 서비스를 동시에 관리하기 위한 Supervisor 설정
++RUN mkdir -p /var/log/supervisor
++
++# Supervisor 설정 파일 생성
++RUN tee /etc/supervisor/conf.d/services.conf > /dev/null <<EOF
++# Supervisor 메인 설정
++[supervisord]
++nodaemon=true              # 데몬 모드 비활성화 (포그라운드 실행)
++user=root                  # root 사용자로 실행
++logfile=/var/log/supervisor/supervisord.log
++pidfile=/var/run/supervisord.pid
++
++# SSH 서버 설정
++[program:sshd]
++command=/usr/sbin/sshd -D  # SSH 데몬 실행
++autostart=true             # 자동 시작
++autorestart=true           # 자동 재시작
++stderr_logfile=/var/log/sshd.err.log
++stdout_logfile=/var/log/sshd.out.log
++user=root                  # root로 실행
++
++# Jupyter Notebook 설정 (포트 8888)
++[program:jupyter-notebook]
++command=jupyter notebook --ip=0.0.0.0 --port=8888 --no-browser --IdentityProvider.token="ubuntu" --ServerApp.allow_origin='*' --ServerApp.allow_remote_access=True --ServerApp.root_dir="/"
++autostart=true             # 자동 시작
++autorestart=true           # 자동 재시작
++stderr_logfile=/dev/null   # 로그 출력 안함
++stdout_logfile=/dev/null   # 로그 출력 안함
++user=ubuntu                # ubuntu 사용자로 실행
++environment=HOME="/home/ubuntu",USER="ubuntu",PATH="/usr/local/nvidia/bin:/usr/local/cuda/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
++
++# Jupyter Lab 설정 (포트 8889)
++[program:jupyter-lab]
++command=jupyter lab --ip=0.0.0.0 --port=8889 --no-browser --IdentityProvider.token="ubuntu" --ServerApp.allow_origin='*' --ServerApp.allow_remote_access=True --ServerApp.root_dir="/"
++autostart=true             # 자동 시작
++autorestart=true           # 자동 재시작
++stderr_logfile=/dev/null   # 로그 출력 안함
++stdout_logfile=/dev/null   # 로그 출력 안함
++user=ubuntu                # ubuntu 사용자로 실행
++environment=HOME="/home/ubuntu",USER="ubuntu",PATH="/usr/local/nvidia/bin:/usr/local/cuda/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
++EOF
++
++
++### 컨테이너 실행 설정 ###
++# 컨테이너 시작 시 Supervisor를 실행하는 엔트리포인트 스크립트 생성
++RUN echo "exec sudo supervisord -c /etc/supervisor/conf.d/services.conf" > /entrypoint.sh \
++    && chmod +x /entrypoint.sh
++
++# 외부에서 접근 가능한 포트 노출
++# - 22: SSH 서버
++# - 8888: Jupyter Notebook
++# - 8889: Jupyter Lab
++EXPOSE 22 8888 8889
++
++# 기본 사용자를 ubuntu로 설정
++USER ubuntu
++
++# 컨테이너 시작 시 엔트리포인트 스크립트 실행
++ENTRYPOINT [ "bash", "/entrypoint.sh" ]
+diff --git a/mmdet3d/core/utils/visualize.py b/mmdet3d/core/utils/visualize.py
+index 7345ce9..80e29fe 100644
+--- a/mmdet3d/core/utils/visualize.py
++++ b/mmdet3d/core/utils/visualize.py
+@@ -415,24 +415,38 @@ def create_collage(
+         else:
+             lidar_resized = np.zeros((lidar_area_height, lidar_area_width, 3), dtype=np.uint8)
+ 
+-        # Camera grid (2x3) on the right side
++        # # Camera grid (2x3) on the right side
++        # camera_rows = []
++        # for i in range(2):  # 2 rows
++        #     row_images = []
++        #     for j in range(3):  # 3 columns
++        #         idx = i * 3 + j
++        #         if idx < len(resized_images) and idx < 6:  # Only camera images
++        #             row_images.append(resized_images[idx])
++        #         else:
++        #             row_images.append(np.zeros((target_size[1], target_size[0], 3), dtype=np.uint8))
++
++        #     camera_row = np.hstack(row_images)
++        #     camera_rows.append(camera_row)
++
++        # camera_grid = np.vstack(camera_rows)
++        grid_map = [[1, 0, 3],
++                    [2, 5, 4]]
++
+         camera_rows = []
+         for i in range(2):  # 2 rows
+             row_images = []
+-            for j in range(3):  # 3 columns
+-                idx = i * 3 + j
+-                if idx < len(resized_images) and idx < 6:  # Only camera images
+-                    row_images.append(resized_images[idx])
++            for j in range(3):  # 3 cols
++                k = grid_map[i][j]
++                if k < len(resized_images) and k < 6:   # 여전히 '카메라 6장만' 사용
++                    row_images.append(resized_images[k])
+                 else:
+                     row_images.append(np.zeros((target_size[1], target_size[0], 3), dtype=np.uint8))
++            camera_rows.append(np.hstack(row_images))
+ 
+-            camera_row = np.hstack(row_images)
+-            camera_rows.append(camera_row)
+-
+-        camera_grid = np.vstack(camera_rows)
+-
++        camera_block = np.vstack(camera_rows)
+         # Combine LiDAR (left) and camera grid (right)
+-        collage = np.hstack([lidar_resized, camera_grid])
++        collage = np.hstack([lidar_resized, camera_block])
+ 
+     # Add labels to each image section
+     font = cv2.FONT_HERSHEY_SIMPLEX
+@@ -442,7 +456,7 @@ def create_collage(
+ 
+     # Camera labels (Waymo order)
+     camera_labels = ["FRONT", "FRONT_LEFT", "SIDE_LEFT",
+-                     "FRONT_RIGHT", "SIDE_RIGHT", "BACK"]
++                    "FRONT_RIGHT", "SIDE_RIGHT", "BACK"]
+ 
+     if layout == "3x3":
+         # Add labels for 3x3 layout
+@@ -480,20 +494,31 @@ def create_collage(
+         y = target_size[1] + 30
+         cv2.putText(collage, "LiDAR", (x, y), font, font_scale, color, thickness)
+ 
++    # elif layout == "lidar_left":
++    #     # LiDAR label (left side, top-left corner)
++    #     cv2.putText(collage, "LiDAR", (10, 30), font, font_scale, color, thickness)
++
++    #     # Camera labels (right side, 2x3 grid)
++    #     lidar_width = target_size[0] * 2  # Width of LiDAR section
++    #     for i in range(2):  # 2 rows
++    #         for j in range(3):  # 3 columns
++    #             idx = i * 3 + j
++    #             if idx < len(camera_labels):
++    #                 x = lidar_width + j * target_size[0] + 10
++    #                 y = i * target_size[1] + 30
++    #                 cv2.putText(collage, camera_labels[idx], (x, y), font, font_scale, color, thickness)
+     elif layout == "lidar_left":
+-        # LiDAR label (left side, top-left corner)
++        grid_map = [[1, 0, 3],   # 1행: FRONT_LEFT, FRONT, FRONT_RIGHT
++            [2, 5, 4]]   # 2행: SIDE_LEFT, BACK, SIDE_RIGHT
+         cv2.putText(collage, "LiDAR", (10, 30), font, font_scale, color, thickness)
+-
+-        # Camera labels (right side, 2x3 grid)
+         lidar_width = target_size[0] * 2  # Width of LiDAR section
+-        for i in range(2):  # 2 rows
+-            for j in range(3):  # 3 columns
+-                idx = i * 3 + j
+-                if idx < len(camera_labels):
+-                    x = lidar_width + j * target_size[0] + 10
+-                    y = i * target_size[1] + 30
+-                    cv2.putText(collage, camera_labels[idx], (x, y), font, font_scale, color, thickness)
+-
++        for i in range(2):
++            for j in range(3):
++                old_idx = grid_map[i][j]
++                x = lidar_width + j * target_size[0] + 10
++                y = i * target_size[1] + 30
++                cv2.putText(collage, camera_labels[old_idx], (x, y), font, font_scale, color, thickness)
++                # 이미지도 camera_images[old_idx]로 배치
+     # Save collage
+     mmcv.mkdir_or_exist(os.path.dirname(fpath))
+     cv2.imwrite(fpath, collage)
+diff --git a/mmdet3d/datasets/waymo_dataset.py b/mmdet3d/datasets/waymo_dataset.py
+index 6e5fe16..66e7b96 100644
+--- a/mmdet3d/datasets/waymo_dataset.py
++++ b/mmdet3d/datasets/waymo_dataset.py
+@@ -97,7 +97,7 @@ class WaymoDataset(Custom3DDataset):
+                 gt_velocity = np.zeros((gt_bboxes_3d.shape[0], 2), dtype=np.float32)
+             gt_bboxes_3d = np.concatenate([gt_bboxes_3d, gt_velocity], axis=-1)
+ 
+-
++        '''
+         gt = gt_boxes[mask] # [x,y,z, dx,dy,dz, yaw] (EGO, center-origin)
+ 
+         # EGO -> LiDAR 변환행렬
+@@ -143,9 +143,10 @@ class WaymoDataset(Custom3DDataset):
+             gt_lidar = np.concatenate([gt_lidar, gt_velocity], axis=-1)
+ 
+         gt_lidar[...,6] =  -gt_lidar[..., 6] - np.pi/2
++        '''
+         # KITTI/NuScenes와 같은 origin 보정
+         gt_bboxes_3d = LiDARInstance3DBoxes(
+-            gt_lidar, box_dim=gt_lidar.shape[-1], origin=(0.5,0.5,0), with_yaw=True
++            gt_bboxes_3d, box_dim=gt_bboxes_3d.shape[-1], origin=(0.5,0.5,0), with_yaw=True
+         ).convert_to(self.box_mode_3d)
+ 
+         anns_results = dict(
+@@ -997,4 +998,4 @@ def output_to_waymo_box(detection):
+ 
+             box_list.append(box_dict)
+ 
+-    return box_list
++    return box_list
+\ No newline at end of file
+diff --git a/mmdet3d/models/heads/bbox/transfusion.py b/mmdet3d/models/heads/bbox/transfusion.py
+index 4331e6c..d7377d3 100644
+--- a/mmdet3d/models/heads/bbox/transfusion.py
++++ b/mmdet3d/models/heads/bbox/transfusion.py
+@@ -270,7 +270,7 @@ class TransFusionHead(nn.Module):
+         top_proposals = heatmap.view(batch_size, -1).argsort(dim=-1, descending=True)[
+             ..., : self.num_proposals
+         ]
+-        top_proposals_class = top_proposals // heatmap.shape[-1]
++        top_proposals_class = torch.div(top_proposals, heatmap.shape[-1], rounding_mode='trunc')
+         top_proposals_index = top_proposals % heatmap.shape[-1]
+         query_feat = lidar_feat_flatten.gather(
+             index=top_proposals_index[:, None, :].expand(
+@@ -532,7 +532,7 @@ class TransFusionHead(nn.Module):
+         pc_range = torch.tensor(self.train_cfg["point_cloud_range"])
+         voxel_size = torch.tensor(self.train_cfg["voxel_size"])
+         feature_map_size = (
+-            grid_size[:2] // self.train_cfg["out_size_factor"]
++            torch.div(grid_size[:2], self.train_cfg["out_size_factor"], rounding_mode='trunc')
+         )  # [x_len, y_len]
+         heatmap = gt_bboxes_3d.new_zeros(
+             self.num_classes, feature_map_size[1], feature_map_size[0]
+diff --git a/nuscenedataset.tar.gz b/nuscenedataset.tar.gz
+new file mode 100644
+index 0000000..7ea17a2
+Binary files /dev/null and b/nuscenedataset.tar.gz differ
+diff --git a/tools/create_data.py b/tools/create_data.py
+index 9e9bf85..50ccf33 100644
+--- a/tools/create_data.py
++++ b/tools/create_data.py
+@@ -139,6 +139,35 @@ if __name__ == "__main__":
+             version=args.version,
+             extra_tag=args.extra_tag
+         )
++        create_groundtruth_database(
++            "WaymoDataset",
++            args.root_path,
++            args.extra_tag,
++            f"{args.out_dir}/{args.extra_tag}_infos_train.pkl",
++            load_augmented=load_augmented,
++        )
++    elif args.dataset == 'waymo' and args.version!="mini":
++        train_version = f"{args.version}-trainval"
++        waymo_converter.create_waymo_infos(
++            root_path=args.root_path,
++            out_dir=args.out_dir,
++            version=train_version,
++            extra_tag=args.extra_tag
++        )
++        create_groundtruth_database(
++            "WaymoDataset",
++            args.root_path,
++            args.extra_tag,
++            f"{args.out_dir}/{args.extra_tag}_infos_train.pkl",
++            load_augmented=load_augmented,
++        )
++        test_version = f"{args.version}-test"
++        waymo_converter.create_waymo_infos(
++            root_path=args.root_path,
++            out_dir=args.out_dir,
++            version=test_version,
++            extra_tag=args.extra_tag
++        )
+         create_groundtruth_database(
+             "WaymoDataset",
+             args.root_path,
+diff --git a/tools/data_converter/waymo_converter.py b/tools/data_converter/waymo_converter.py
+index 1efbd00..dc28a95 100644
+--- a/tools/data_converter/waymo_converter.py
++++ b/tools/data_converter/waymo_converter.py
+@@ -248,19 +248,45 @@ def parse_tfrecord(tfrecord_path, out_dir):
+         ### waymo는 gt_velocity가 제공되지 않는다.
+         ### vx = 
+         gt_boxes, gt_names, num_pts = [], [], []
++
++        # L->E (lidar2ego)
++        R_le = lidar2ego[:3, :3].astype(np.float32)
++        t_le = lidar2ego[:3, 3].astype(np.float32)
++        T_le = np.eye(4, dtype=np.float32)
++        T_le[:3, :3] = R_le
++        T_le[:3, 3]  = t_le
++
++        # E->L
++        T_el = np.linalg.inv(T_le).astype(np.float32)
++        R_el = T_el[:3, :3]  # = R_le.T
+         for label in frame.laser_labels:
+             cls_name = WAYMO_CLASSES.get(label.type, "unknown")
+ 
+-            box = [
+-                label.box.center_x,
+-                label.box.center_y,
+-                label.box.center_z ,
+-                label.box.width,
+-                label.box.length,
+-                label.box.height,
+-                label.box.heading
+-            ]
+-            gt_boxes.append(box)
++            # EGO 기준 중심/치수/yaw (Waymo 정의 그대로)
++            cx_e = float(label.box.center_x)
++            cy_e = float(label.box.center_y)
++            cz_e = float(label.box.center_z)
++
++            dx = float(label.box.width)  # [length, width, height]
++            dy = float(label.box.length)
++            dz = float(label.box.height)
++
++            yaw_e = float(label.box.heading)
++
++            # --- 중심: EGO -> LiDAR ---
++            p_e = np.array([cx_e, cy_e, cz_e, 1.0], dtype=np.float32)
++            p_l = (T_el @ p_e)[:3]  # (3,)
++
++            # --- yaw: EGO -> LiDAR (방향 벡터 회전) ---
++            v_e = np.array([np.cos(yaw_e), np.sin(yaw_e), 0.0], dtype=np.float32)  # EGO 평면 방향
++            v_l = (R_el @ v_e)  # LiDAR 평면 방향
++            yaw_l = np.arctan2(v_l[1], v_l[0])
++            # [-pi, pi) 정규화
++            yaw_l = (yaw_l + np.pi) % (2 * np.pi) - np.pi
++
++            # LiDAR 기준 박스: [x, y, z, dx, dy, dz, yaw]
++            box_l = [p_l[0], p_l[1], p_l[2], dx, dy, dz, -yaw_l-np.pi/2]
++            gt_boxes.append(box_l)
+             gt_names.append(cls_name)
+             num_pts.append(label.num_lidar_points_in_box)
+ 
+@@ -288,15 +314,31 @@ def parse_tfrecord(tfrecord_path, out_dir):
+ 
+     return infos
+ 
+-def create_waymo_infos(root_path, out_dir, version="v1.0-mini", extra_tag="waymo"):
+-    tfrecords = sorted(Path(root_path).rglob("*.tfrecord"))
+-    all_infos = []
+-    for tfrecord in tfrecords:
+-        infos = parse_tfrecord(str(tfrecord), out_dir)
+-        all_infos.extend(infos)
+-    out_file = Path(out_dir) / f"{extra_tag}_infos_train.pkl"
+-    mmcv.dump(dict(infos=all_infos, metadata=dict(version=version)), str(out_file))
+-    print(f"Saved {len(all_infos)} infos at {out_file}")
++def create_waymo_infos(root_path, out_dir, version, extra_tag="waymo"):
++    if version == "trainval":
++        train_tfrecords = sorted(Path(root_path , "/training").rglob("*.tfrecord"))
++        val_tfrecords = sorted(Path(root_path , "/validatiaon").rglob("*.tfrecord"))
++        train_infos = []
++        for tfrecord in train_tfrecords:
++            train_infos.extend(parse_tfrecord(str(tfrecord), out_dir))
++        out_file_train = Path(out_dir) / f"{extra_tag}_infos_train.pkl"
++        mmcv.dump(dict(infos=train_infos, metadata=dict(version=version)), str(out_file_train))
++        print(f"Saved {len(train_infos)} frames to {out_file_train}")
++        val_infos = []
++        for tfrecord in val_tfrecords:
++            val_infos.extend(parse_tfrecord(str(tfrecord), out_dir))
++        out_file_val = Path(out_dir) / f"{extra_tag}_infos_val.pkl"
++        mmcv.dump(dict(infos=val_infos, metadata=dict(version=version)), str(out_file_val))
++        print(f"Saved {len(val_infos)} frames to {out_file_val}")
++    elif version== "test":
++        test_tfrecords = sorted(Path(root_path , "/test").rglob("*.tfrecord"))
++        test_infos = []
++        for tfrecord in test_tfrecords:
++            test_infos.extend(parse_tfrecord(str(tfrecord), out_dir))
++        out_file_val = Path(out_dir) / f"{extra_tag}_infos_val.pkl"
++        mmcv.dump(dict(infos=test_infos, metadata=dict(version=version)), str(out_file_val))
++        print(f"Saved {len(test_infos)} frames to {out_file_val}")
++
+ 
+ 
+ def create_waymo_infos_mini(root_path, out_dir, version="mini", extra_tag="waymo"):
+diff --git a/wamodataset.tar.gz b/wamodataset.tar.gz
+new file mode 100644
+index 0000000..64113cd
+Binary files /dev/null and b/wamodataset.tar.gz differ

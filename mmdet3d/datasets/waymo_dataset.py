@@ -97,7 +97,7 @@ class WaymoDataset(Custom3DDataset):
                 gt_velocity = np.zeros((gt_bboxes_3d.shape[0], 2), dtype=np.float32)
             gt_bboxes_3d = np.concatenate([gt_bboxes_3d, gt_velocity], axis=-1)
 
-
+        '''
         gt = gt_boxes[mask] # [x,y,z, dx,dy,dz, yaw] (EGO, center-origin)
 
         # EGO -> LiDAR 변환행렬
@@ -143,9 +143,10 @@ class WaymoDataset(Custom3DDataset):
             gt_lidar = np.concatenate([gt_lidar, gt_velocity], axis=-1)
 
         gt_lidar[...,6] =  -gt_lidar[..., 6] - np.pi/2
+        '''
         # KITTI/NuScenes와 같은 origin 보정
         gt_bboxes_3d = LiDARInstance3DBoxes(
-            gt_lidar, box_dim=gt_lidar.shape[-1], origin=(0.5,0.5,0), with_yaw=True
+            gt_bboxes_3d, box_dim=gt_bboxes_3d.shape[-1], origin=(0.5,0.5,0), with_yaw=True
         ).convert_to(self.box_mode_3d)
 
         anns_results = dict(

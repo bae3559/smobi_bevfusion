@@ -139,6 +139,12 @@ visualize/*
 work_dirs/*
 viz_waymo_train_result/
 .dist_test/
+
+# Large dataset files
+*.tar.gz
+nuscenedataset.tar.gz
+wamodataset.tar.gz
+
 # torch hipify generated files
 *_hip.*
 *.hip
