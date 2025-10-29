@@ -61,9 +61,17 @@ class TransFusionBBoxCoder(BaseBBoxCoder):
         center[:, 0, :] = center[:, 0, :] * self.out_size_factor * self.voxel_size[0] + self.pc_range[0]
         center[:, 1, :] = center[:, 1, :] * self.out_size_factor * self.voxel_size[1] + self.pc_range[1]
         # center[:, 2, :] = center[:, 2, :] * (self.post_center_range[5] - self.post_center_range[2]) + self.post_center_range[2]
+        # 251028 주석 처리
         dim[:, 0, :] = dim[:, 0, :].exp()
         dim[:, 1, :] = dim[:, 1, :].exp()
         dim[:, 2, :] = dim[:, 2, :].exp()
+
+        # After: exp 입력값을 clamp
+        # dim[:, 0, :] = torch.clamp(dim[:, 0, :], min=-5, max=10).exp()
+        # dim[:, 1, :] = torch.clamp(dim[:, 1, :], min=-5, max=10).exp()
+        # dim[:, 2, :] = torch.clamp(dim[:, 2, :], min=-5, max=10).exp()
+        # exp(-5) = 0.0067m, exp(10) = 22026m로 충분한 범위 
+
         height = height - dim[:, 2:3, :] * 0.5  # gravity center to bottom center
         rots, rotc = rot[:, 0:1, :], rot[:, 1:2, :]
         rot = torch.atan2(rots, rotc)

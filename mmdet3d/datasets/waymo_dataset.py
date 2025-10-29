@@ -478,8 +478,9 @@ class WaymoDataset(Custom3DDataset):
             gt_boxes = ann_info["gt_bboxes_3d"]
             gt_labels = ann_info["gt_labels_3d"]
 
-            # Process ground truth
-            for box, label in zip(gt_boxes.tensor.cpu().numpy(), gt_labels):
+            # Process ground truth - convert to numpy once
+            gt_boxes_np = gt_boxes.tensor.cpu().numpy() if hasattr(gt_boxes.tensor, 'cpu') else gt_boxes.tensor.numpy()
+            for box, label in zip(gt_boxes_np, gt_labels):
                 if 0 <= label < len(self.CLASSES):
                     class_name = self.CLASSES[label]
                     class_gt_data[class_name]['boxes'].append(box[:7])  # [x, y, z, w, l, h, yaw]
@@ -827,8 +828,59 @@ class WaymoDataset(Custom3DDataset):
 
         return inter_area / union_area
 
+    def compute_iou_matrix_vectorized(self, pred_boxes, gt_boxes):
+        """Compute IoU matrix for all pred-GT pairs using vectorized operations.
+
+        Args:
+            pred_boxes (np.ndarray): (N, 7) array of predicted boxes [x, y, z, w, l, h, yaw]
+            gt_boxes (np.ndarray): (M, 7) array of ground truth boxes [x, y, z, w, l, h, yaw]
+
+        Returns:
+            np.ndarray: (N, M) IoU matrix
+        """
+        # Extract coordinates: boxes[:, [x, y, w, l]] -> [x, y, w, l]
+        pred_x, pred_y, pred_w, pred_l = pred_boxes[:, 0], pred_boxes[:, 1], pred_boxes[:, 3], pred_boxes[:, 4]
+        gt_x, gt_y, gt_w, gt_l = gt_boxes[:, 0], gt_boxes[:, 1], gt_boxes[:, 3], gt_boxes[:, 4]
+
+        # Compute min/max coordinates for all boxes
+        # Shape: (N,)
+        pred_x_min = pred_x - pred_w / 2
+        pred_x_max = pred_x + pred_w / 2
+        pred_y_min = pred_y - pred_l / 2
+        pred_y_max = pred_y + pred_l / 2
+
+        # Shape: (M,)
+        gt_x_min = gt_x - gt_w / 2
+        gt_x_max = gt_x + gt_w / 2
+        gt_y_min = gt_y - gt_l / 2
+        gt_y_max = gt_y + gt_l / 2
+
+        # Broadcast to (N, M) for pairwise computation
+        # pred: (N, 1), gt: (1, M) -> broadcast to (N, M)
+        inter_x_min = np.maximum(pred_x_min[:, None], gt_x_min[None, :])
+        inter_x_max = np.minimum(pred_x_max[:, None], gt_x_max[None, :])
+        inter_y_min = np.maximum(pred_y_min[:, None], gt_y_min[None, :])
+        inter_y_max = np.minimum(pred_y_max[:, None], gt_y_max[None, :])
+
+        # Intersection area (N, M)
+        inter_w = np.maximum(0, inter_x_max - inter_x_min)
+        inter_h = np.maximum(0, inter_y_max - inter_y_min)
+        inter_area = inter_w * inter_h
+
+        # Areas of boxes
+        pred_area = pred_w * pred_l  # (N,)
+        gt_area = gt_w * gt_l  # (M,)
+
+        # Union area (N, M)
+        union_area = pred_area[:, None] + gt_area[None, :] - inter_area
+
+        # IoU (N, M)
+        iou = inter_area / (union_area + 1e-8)
+
+        return iou
+
     def compute_detailed_metrics(self, pred_boxes, pred_scores, gt_boxes, iou_threshold=0.5):
-        """Compute detailed metrics including AP, ATE, ASE, AOE.
+        """Compute detailed metrics including AP, ATE, ASE, AOE (Vectorized version).
 
         Args:
             pred_boxes (list): List of predicted boxes [x, y, z, w, l, h, yaw]
@@ -853,7 +905,10 @@ class WaymoDataset(Custom3DDataset):
         pred_boxes = pred_boxes[sorted_indices]
         pred_scores = pred_scores[sorted_indices]
 
-        # Match predictions to ground truth and calculate errors
+        # Compute IoU matrix for all pred-GT pairs (vectorized)
+        iou_matrix = self.compute_iou_matrix_vectorized(pred_boxes, gt_boxes)
+
+        # Match predictions to ground truth
         tp = np.zeros(len(pred_boxes))
         fp = np.zeros(len(pred_boxes))
         gt_matched = np.zeros(len(gt_boxes), dtype=bool)
@@ -862,28 +917,24 @@ class WaymoDataset(Custom3DDataset):
         scale_errors = []
         orientation_errors = []
 
-        for i, pred_box in enumerate(pred_boxes):
-            best_iou = 0.0
-            best_gt_idx = -1
+        for i in range(len(pred_boxes)):
+            # Find best unmatched GT for this prediction
+            ious = iou_matrix[i].copy()
+            ious[gt_matched] = -1  # Mask already matched GTs
 
-            for j, gt_box in enumerate(gt_boxes):
-                if gt_matched[j]:
-                    continue
+            best_gt_idx = np.argmax(ious)
+            best_iou = ious[best_gt_idx]
 
-                iou = self.compute_3d_iou(pred_box, gt_box)
-                if iou > best_iou:
-                    best_iou = iou
-                    best_gt_idx = j
-
-            if best_iou >= iou_threshold and best_gt_idx >= 0:
+            if best_iou >= iou_threshold:
                 tp[i] = 1
                 gt_matched[best_gt_idx] = True
 
                 # Calculate errors for matched boxes
+                pred_box = pred_boxes[i]
                 gt_box = gt_boxes[best_gt_idx]
 
                 # Translation error (Euclidean distance)
-                trans_err = np.sqrt(np.sum((pred_box[:3] - gt_box[:3]) ** 2))
+                trans_err = np.linalg.norm(pred_box[:3] - gt_box[:3])
                 translation_errors.append(trans_err)
 
                 # Scale error (1 - IoU of dimensions)

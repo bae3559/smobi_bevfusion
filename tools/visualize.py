@@ -103,6 +103,8 @@ def main() -> None:
             try:
                 with torch.inference_mode():
                     # Try to get model predictions
+                    data_list = list(data.keys())
+                    print(f"[DEBUG] {len(data_list)} Data Keys: {data_list}")
                     # Temporarily set test_mode to avoid some errors
                     model.module.test_cfg = getattr(model.module, 'test_cfg', {})
                     outputs = model(**data, return_loss=True)

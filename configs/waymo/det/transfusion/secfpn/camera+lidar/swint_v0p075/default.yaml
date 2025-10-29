@@ -3,7 +3,7 @@ _base_: ../../../../default.yaml
 
 # Waymo dataset settings - override base config
 dataset_type: WaymoDataset
-dataset_root: data/waymo/Waymo_processed/
+dataset_root: data/waymo/Waymo_mini/
 load_dim: 5
 use_dim: 5
 object_classes:

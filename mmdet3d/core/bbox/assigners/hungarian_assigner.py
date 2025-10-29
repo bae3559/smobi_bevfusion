@@ -116,15 +116,37 @@ class HungarianAssigner3D(BaseAssigner):
         iou = self.iou_calculator(bboxes, gt_bboxes)
         iou_cost = self.iou_cost(iou)
 
-        # weighted sum of above three costs
-        cost = cls_cost + reg_cost + iou_cost
+        # hungarian_assigner.py Line 114-120에 추가
+        # # weighted sum of above three costs
+        # cost = cls_cost + reg_cost + iou_cost
+
+        # # 3. do Hungarian matching on CPU using linear_sum_assignment
+        # cost = cost.detach().cpu()
+        # if linear_sum_assignment is None:
+        #     raise ImportError('Please run "pip install scipy" '
+        #                       'to install scipy first.')
+        # matched_row_inds, matched_col_inds = linear_sum_assignment(cost)
+
+        #251028 error issue 
+        cost = cls_cost+reg_cost+iou_cost
 
         # 3. do Hungarian matching on CPU using linear_sum_assignment
         cost = cost.detach().cpu()
+
+        # Add NaN/Inf check
+        if torch.isnan(cost).any() or torch.isinf(cost).any():
+            print(f"Warning: NaN or Inf detected in cost matrix!")
+            print(f"  cls_cost has NaN: {torch.isnan(cls_cost).any()}")
+            print(f"  reg_cost has NaN: {torch.isnan(reg_cost).any()}")
+            print(f"  iou_cost has NaN: {torch.isnan(iou_cost).any()}")
+            print(f"  num_gts: {num_gts}, num_bboxes: {num_bboxes}")
+            # Replace NaN/Inf with large value
+            cost = torch.nan_to_num(cost, nan=1e8, posinf=1e8, neginf=-1e8)
         if linear_sum_assignment is None:
             raise ImportError('Please run "pip install scipy" '
-                              'to install scipy first.')
+                            'to install scipy first.')
         matched_row_inds, matched_col_inds = linear_sum_assignment(cost)
+
         matched_row_inds = torch.from_numpy(matched_row_inds).to(bboxes.device)
         matched_col_inds = torch.from_numpy(matched_col_inds).to(bboxes.device)
 

@@ -429,6 +429,16 @@ class TransFusionHead(nn.Module):
         height = copy.deepcopy(preds_dict["height"].detach())
         dim = copy.deepcopy(preds_dict["dim"].detach())
         rot = copy.deepcopy(preds_dict["rot"].detach())
+        # # === 디버깅 코드 추가 ===
+        # print(f"\n=== Prediction Check (before decode) ===")
+        # print(f"score - range: {score.min():.2f} ~ {score.max():.2f}, has_nan: {torch.isnan(score).any()}")
+        # print(f"center - range: {center.min():.2f} ~ {center.max():.2f}, has_nan: {torch.isnan(center).any()}")
+        # print(f"height - range: {height.min():.2f} ~ {height.max():.2f}, has_nan: {torch.isnan(height).any()}")
+        # print(f"dim - range: {dim.min():.2f} ~ {dim.max():.2f}, has_nan: {torch.isnan(dim).any()}")
+        # print(f"rot - range: {rot.min():.2f} ~ {rot.max():.2f}, has_nan: {torch.isnan(rot).any()}")
+        # # ===========================
+
+
         if "vel" in preds_dict.keys():
             vel = copy.deepcopy(preds_dict["vel"].detach())
         else:
