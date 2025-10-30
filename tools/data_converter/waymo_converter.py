@@ -15,7 +15,7 @@ WAYMO_CLASSES = {
 }
 
 
-def parse_tfrecord(tfrecord_path, out_dir):
+def parse_tfrecord(tfrecord_path, out_dir, create_dummy_back=True):
     dataset = tf.data.TFRecordDataset(tfrecord_path, compression_type='')
     infos = []
 
@@ -169,18 +169,25 @@ def parse_tfrecord(tfrecord_path, out_dir):
             #print("calibartion",calib)
             if calib is not None:
                 # Waymo intrinsic parameters: [fx, fy, cx, cy, k1, k2, p1, p2, k3]
-                # We only need the first 4 for the camera matrix
                 intrinsic_params = np.array(calib.intrinsic, dtype=np.float32)
                 #print('camera_intrinsic', intrinsic_params)
                 fx, fy, cx, cy = intrinsic_params[0], intrinsic_params[1], intrinsic_params[2], intrinsic_params[3]
                 intrinsics = np.array([[fx,  0, cx],
                                      [ 0, fy, cy],
                                      [ 0,  0,  1]], dtype=np.float32)
+
+                # Distortion coefficients: [k1, k2, p1, p2, k3]
+                if len(intrinsic_params) >= 9:
+                    distortion = intrinsic_params[4:9]  # [k1, k2, p1, p2, k3]
+                else:
+                    distortion = np.zeros(5, dtype=np.float32)
+
                 # extrinsic : camera to vehicle
                 extrinsic = np.reshape(np.array(calib.extrinsic.transform), [4, 4])
             else:
                 intrinsics = np.eye(3)
                 extrinsic = np.eye(4)
+                distortion = np.zeros(5, dtype=np.float32)
 
             # ✅ CAM→EGO (extrinsic 그대로 사용)
             sensor2ego_rotation = extrinsic[:3, :3]
@@ -191,18 +198,23 @@ def parse_tfrecord(tfrecord_path, out_dir):
             sensor2lidar_rotation = sensor2lidar[:3, :3]
             sensor2lidar_translation = sensor2lidar[:3, 3]
 
+            # Use camera's own timestamp for better synchronization
+            # Waymo images have pose_timestamp (when the image was captured)
+            cam_timestamp = img.pose_timestamp if hasattr(img, 'pose_timestamp') and img.pose_timestamp > 0 else frame.timestamp_micros
+
             cams[nuscenes_cam_name] = dict(
                 data_path=str(img_path),
                 cam_intrinsic=intrinsics,
+                cam_distortion=distortion,  # [k1, k2, p1, p2, k3]
                 sensor2ego_rotation=sensor2ego_rotation,
                 sensor2ego_translation=sensor2ego_translation,
                 sensor2lidar_rotation=sensor2lidar_rotation,
                 sensor2lidar_translation=sensor2lidar_translation,
-                timestamp=frame.timestamp_micros,
+                timestamp=cam_timestamp,
             )
 
         # CAM_BACK 더미 카메라 추가 (Waymo에는 후방 카메라가 없음)
-        if 'CAM_BACK' not in cams:
+        if create_dummy_back and 'CAM_BACK' not in cams:
             # 더미 이미지 생성 (검은색 이미지)
             dummy_img_dir = Path(out_dir) / "images" / "CAM_BACK"
             dummy_img_dir.mkdir(parents=True, exist_ok=True)
@@ -237,6 +249,7 @@ def parse_tfrecord(tfrecord_path, out_dir):
             cams['CAM_BACK'] = dict(
                 data_path=str(dummy_img_path),
                 cam_intrinsic=dummy_intrinsics,
+                cam_distortion=np.zeros(5, dtype=np.float32),  # No distortion for dummy camera
                 sensor2ego_rotation=dummy_extrinsic[:3, :3],
                 sensor2ego_translation=dummy_extrinsic[:3, 3],
                 sensor2lidar_rotation=dummy_sensor2lidar_rotation,
@@ -314,19 +327,19 @@ def parse_tfrecord(tfrecord_path, out_dir):
 
     return infos
 
-def create_waymo_infos(root_path, out_dir, version, extra_tag="waymo"):
+def create_waymo_infos(root_path, out_dir, version, extra_tag="waymo", create_dummy_back=True):
     if version == "trainval":
         train_tfrecords = sorted(Path(root_path , "/training").rglob("*.tfrecord"))
         val_tfrecords = sorted(Path(root_path , "/validatiaon").rglob("*.tfrecord"))
         train_infos = []
         for tfrecord in train_tfrecords:
-            train_infos.extend(parse_tfrecord(str(tfrecord), out_dir))
+            train_infos.extend(parse_tfrecord(str(tfrecord), out_dir, create_dummy_back))
         out_file_train = Path(out_dir) / f"{extra_tag}_infos_train.pkl"
         mmcv.dump(dict(infos=train_infos, metadata=dict(version=version)), str(out_file_train))
         print(f"Saved {len(train_infos)} frames to {out_file_train}")
         val_infos = []
         for tfrecord in val_tfrecords:
-            val_infos.extend(parse_tfrecord(str(tfrecord), out_dir))
+            val_infos.extend(parse_tfrecord(str(tfrecord), out_dir, create_dummy_back))
         out_file_val = Path(out_dir) / f"{extra_tag}_infos_val.pkl"
         mmcv.dump(dict(infos=val_infos, metadata=dict(version=version)), str(out_file_val))
         print(f"Saved {len(val_infos)} frames to {out_file_val}")
@@ -334,27 +347,27 @@ def create_waymo_infos(root_path, out_dir, version, extra_tag="waymo"):
         test_tfrecords = sorted(Path(root_path , "/test").rglob("*.tfrecord"))
         test_infos = []
         for tfrecord in test_tfrecords:
-            test_infos.extend(parse_tfrecord(str(tfrecord), out_dir))
+            test_infos.extend(parse_tfrecord(str(tfrecord), out_dir, create_dummy_back))
         out_file_val = Path(out_dir) / f"{extra_tag}_infos_val.pkl"
         mmcv.dump(dict(infos=test_infos, metadata=dict(version=version)), str(out_file_val))
         print(f"Saved {len(test_infos)} frames to {out_file_val}")
 
 
 
-def create_waymo_infos_mini(root_path, out_dir, version="mini", extra_tag="waymo"):
+def create_waymo_infos_mini(root_path, out_dir, version="mini", extra_tag="waymo", create_dummy_back=True):
     train_tfrecords = sorted(Path(root_path, "waymo_format/training").rglob("*.tfrecord"))
     val_tfrecords = sorted(Path(root_path, "waymo_format/validation").rglob("*.tfrecord"))
 
     train_infos = []
     for tfrecord in train_tfrecords:
-        train_infos.extend(parse_tfrecord(str(tfrecord), out_dir))
+        train_infos.extend(parse_tfrecord(str(tfrecord), out_dir, create_dummy_back))
     out_file_train = Path(out_dir) / f"{extra_tag}_infos_train.pkl"
     mmcv.dump(dict(infos=train_infos, metadata=dict(version=version)), str(out_file_train))
     print(f"Saved {len(train_infos)} frames to {out_file_train}")
 
     val_infos = []
     for tfrecord in val_tfrecords:
-        val_infos.extend(parse_tfrecord(str(tfrecord), out_dir))
+        val_infos.extend(parse_tfrecord(str(tfrecord), out_dir, create_dummy_back))
     out_file_val = Path(out_dir) / f"{extra_tag}_infos_val.pkl"
     mmcv.dump(dict(infos=val_infos, metadata=dict(version=version)), str(out_file_val))
     print(f"Saved {len(val_infos)} frames to {out_file_val}")

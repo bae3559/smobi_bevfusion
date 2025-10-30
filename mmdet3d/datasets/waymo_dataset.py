@@ -197,6 +197,7 @@ class WaymoDataset(Custom3DDataset):
                 lidar2camera=[],
                 camera2lidar=[],
                 camera_intrinsics=[],
+                camera_distortions=[],
                 img_aug_matrix=[],
                 lidar_aug_matrix=[],
             ))
@@ -208,6 +209,10 @@ class WaymoDataset(Custom3DDataset):
                 cam_intrinsic[:3, :3] = cam["cam_intrinsic"]
                 input_dict["cam_intrinsics"].append(cam_intrinsic)
                 input_dict["camera_intrinsics"].append(cam["cam_intrinsic"])
+
+                # Camera distortion coefficients [k1, k2, p1, p2, k3]
+                cam_distortion = cam.get("cam_distortion", np.zeros(5, dtype=np.float32))
+                input_dict["camera_distortions"].append(cam_distortion)
 
                 # Camera to ego transformation (handle both quaternion and rotation matrix)
                 camera2ego = np.eye(4, dtype=np.float32)
@@ -264,6 +269,10 @@ class WaymoDataset(Custom3DDataset):
                 # Augmentation matrices (identity for now)
                 input_dict["img_aug_matrix"].append(np.eye(4, dtype=np.float32))
                 input_dict["lidar_aug_matrix"].append(np.eye(4, dtype=np.float32))
+
+            # Convert camera_distortions list to numpy array for easier handling
+            if "camera_distortions" in input_dict:
+                input_dict["camera_distortions"] = np.array(input_dict["camera_distortions"], dtype=np.float32)
 
         annos = self.get_ann_info(index)
         input_dict["ann_info"] = annos

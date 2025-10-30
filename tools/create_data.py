@@ -88,6 +88,12 @@ parser.add_argument("--virtual", default=False, action="store_true")
 parser.add_argument(
     "--workers", type=int, default=4, help="number of threads to be used"
 )
+parser.add_argument(
+    "--no-dummy-back",
+    default=False,
+    action="store_true",
+    help="Do not create dummy CAM_BACK for Waymo dataset (default: create dummy back camera)"
+)
 args = parser.parse_args()
 
 if __name__ == "__main__":
@@ -137,7 +143,8 @@ if __name__ == "__main__":
             root_path=args.root_path,
             out_dir=args.out_dir,
             version=args.version,
-            extra_tag=args.extra_tag
+            extra_tag=args.extra_tag,
+            create_dummy_back=(not args.no_dummy_back)
         )
         create_groundtruth_database(
             "WaymoDataset",
@@ -152,7 +159,8 @@ if __name__ == "__main__":
             root_path=args.root_path,
             out_dir=args.out_dir,
             version=train_version,
-            extra_tag=args.extra_tag
+            extra_tag=args.extra_tag,
+            create_dummy_back=(not args.no_dummy_back)
         )
         create_groundtruth_database(
             "WaymoDataset",
@@ -166,7 +174,8 @@ if __name__ == "__main__":
             root_path=args.root_path,
             out_dir=args.out_dir,
             version=test_version,
-            extra_tag=args.extra_tag
+            extra_tag=args.extra_tag,
+            create_dummy_back=(not args.no_dummy_back)
         )
         create_groundtruth_database(
             "WaymoDataset",

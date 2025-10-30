@@ -51,6 +51,8 @@ def visualize_camera(
     bboxes: Optional[LiDARInstance3DBoxes] = None,
     labels: Optional[np.ndarray] = None,
     transform: Optional[np.ndarray] = None,
+    camera_distortions: Optional[np.ndarray] = None,
+    camera_intrinsics: Optional[np.ndarray] = None,
     classes: Optional[List[str]] = None,
     color: Optional[Tuple[int, int, int]] = None,
     thickness: float = 4,
@@ -75,6 +77,7 @@ def visualize_camera(
     print(f"Original image placed at offset: ({start_x}, {start_y})")
     '''
     canvas = image.copy()
+
     canvas = cv2.cvtColor(canvas, cv2.COLOR_RGB2BGR)
     if dataset_type=="waymo":
         if bboxes is not None and len(bboxes) > 0:
@@ -384,9 +387,27 @@ def create_collage(
         lidar_area_width = target_size[0] * 2  # 960
         lidar_area_height = target_size[1] * 2  # 640
 
-        if len(resized_images) > 6:
+        # Check total number of images to determine LiDAR position
+        # len(images) == 7: 6 cameras + LiDAR (CAM_BACK exists)
+        # len(images) == 6: 5 cameras + LiDAR (no CAM_BACK)
+        total_images = len(images)
+
+        if total_images == 7:
+            # 6 cameras + LiDAR
+            lidar_idx = 6
+            num_cameras = 6
+        elif total_images == 6:
+            # 5 cameras + LiDAR (no CAM_BACK)
+            lidar_idx = 5
+            num_cameras = 5
+        else:
+            # Fallback
+            lidar_idx = total_images - 1
+            num_cameras = total_images - 1
+
+        if lidar_idx < len(images):
             # Keep original LiDAR image aspect ratio
-            original_lidar = images[6]
+            original_lidar = images[lidar_idx]
             orig_h, orig_w = original_lidar.shape[:2]
             orig_ratio = orig_w / orig_h
 
@@ -415,32 +436,21 @@ def create_collage(
         else:
             lidar_resized = np.zeros((lidar_area_height, lidar_area_width, 3), dtype=np.uint8)
 
-        # # Camera grid (2x3) on the right side
-        # camera_rows = []
-        # for i in range(2):  # 2 rows
-        #     row_images = []
-        #     for j in range(3):  # 3 columns
-        #         idx = i * 3 + j
-        #         if idx < len(resized_images) and idx < 6:  # Only camera images
-        #             row_images.append(resized_images[idx])
-        #         else:
-        #             row_images.append(np.zeros((target_size[1], target_size[0], 3), dtype=np.uint8))
-
-        #     camera_row = np.hstack(row_images)
-        #     camera_rows.append(camera_row)
-
-        # camera_grid = np.vstack(camera_rows)
-        grid_map = [[1, 0, 3],
-                    [2, 5, 4]]
+        # Camera grid (2x3) on the right side
+        # grid_map: camera index mapping to grid position
+        grid_map = [[1, 0, 3],   # FRONT_LEFT, FRONT, FRONT_RIGHT
+                    [2, 5, 4]]   # SIDE_LEFT, BACK, SIDE_RIGHT
 
         camera_rows = []
         for i in range(2):  # 2 rows
             row_images = []
             for j in range(3):  # 3 cols
                 k = grid_map[i][j]
-                if k < len(resized_images) and k < 6:   # 여전히 '카메라 6장만' 사용
+                # If we only have 5 cameras (no CAM_BACK), k=5 position should be black
+                if k < num_cameras and k < len(resized_images):
                     row_images.append(resized_images[k])
                 else:
+                    # Fill with black for missing cameras (e.g., CAM_BACK when only 5 cameras)
                     row_images.append(np.zeros((target_size[1], target_size[0], 3), dtype=np.uint8))
             camera_rows.append(np.hstack(row_images))
 

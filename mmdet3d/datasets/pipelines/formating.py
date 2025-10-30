@@ -186,7 +186,8 @@ class Collect3D:
         for key in self.meta_keys:
             if key in results:
                 val = np.array(results[key])
-                if isinstance(results[key], list):
+                # Treat camera_distortions as list (stack without pad_dims) even if it's ndarray
+                if isinstance(results[key], list) or key == "camera_distortions":
                     data[key] = DC(to_tensor(val), stack=True)
                 else:
                     data[key] = DC(to_tensor(val), stack=True, pad_dims=1)
@@ -195,6 +196,10 @@ class Collect3D:
         for key in self.meta_lis_keys:
             if key in results:
                 metas[key] = results[key]
+
+        # Add camera_distortions to metas if present (avoid collate issues)
+        if "camera_distortions" in results:
+            metas["camera_distortions"] = results["camera_distortions"]
 
         data["metas"] = DC(metas, cpu_only=True)
         return data

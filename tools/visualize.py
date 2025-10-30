@@ -58,7 +58,16 @@ def main() -> None:
     torch.cuda.set_device(dist.local_rank())
 
     # build the dataloader
-    dataset = build_dataset(cfg.data[args.split])
+    # Force test_mode=True and use test pipeline for visualization (no augmentation)
+    dataset_cfg = cfg.data[args.split]
+    if args.split == "train":
+        # Use train data but with test pipeline (no augmentation)
+        dataset_cfg = dataset_cfg.copy()
+        dataset_cfg['test_mode'] = True
+        dataset_cfg['pipeline'] = cfg.data.test.pipeline
+        print("[INFO] Using train dataset with test pipeline (no augmentation) for visualization")
+
+    dataset = build_dataset(dataset_cfg)
     dataflow = build_dataloader(
         dataset,
         samples_per_gpu=1,
@@ -83,6 +92,9 @@ def main() -> None:
 
         metas = data["metas"].data[0][0]
 
+        # Get camera_intrinsics from data (it's in meta_keys, not meta_lis_keys)
+        # DataContainer wraps the data: .data[0] gets batch, [0] gets first sample
+        camera_intrinsics = data["camera_intrinsics"].data[0][0] if "camera_intrinsics" in data else None
         # Handle both nuScenes (has token) and Waymo (doesn't have token)
         if "token" in metas:
             name = "{}-{}".format(metas["timestamp"], metas["token"])
@@ -119,9 +131,9 @@ def main() -> None:
             if dataset_type=="waymo":
                 bboxes = data["gt_bboxes_3d"].data[0][0].tensor.numpy()
 
-                dx_mean = float(bboxes[:, 3].mean())
-                dy_mean = float(bboxes[:, 4].mean())
-                print("mean dx:", dx_mean, " mean dy:", dy_mean)  # 보통 차량은 dx > dy
+                # dx_mean = float(bboxes[:, 3].mean())
+                # dy_mean = float(bboxes[:, 4].mean())
+                # print("mean dx:", dx_mean, " mean dy:", dy_mean)  # 보통 차량은 dx > dy
 
                 #print("boxes before LiDARInstance3DBoxes",bboxes )
                 labels = data["gt_labels_3d"].data[0][0].numpy()
@@ -205,7 +217,12 @@ def main() -> None:
         # Store image paths for collage
         camera_image_paths = []
         lidar_image_path = None
-
+        #print("metas",metas)
+        # meta {'filename': ['data/waymo/Waymo_processed/images/CAM_FRONT/10203656353524179475_7625_000_7645_000_1522688015269987.jpg', 'data/waymo/Waymo_processed/images/CAM_FRONT_LEFT/10203656353524179475_7625_000_7645_000_1522688015269987.jpg', 'data/waymo/Waymo_processed/images/CAM_BACK_LEFT/10203656353524179475_7625_000_7645_000_1522688015269987.jpg', 'data/waymo/Waymo_processed/images/CAM_FRONT_RIGHT/10203656353524179475_7625_000_7645_000_1522688015269987.jpg', 
+        # 'data/waymo/Waymo_processed/images/CAM_BACK_RIGHT/10203656353524179475_7625_000_7645_000_1522688015269987.jpg', 
+        # 'data/waymo/Waymo_processed/images/CAM_BACK/10203656353524179475_7625_000_7645_000_1522688015269987.jpg'], 
+        # 'timestamp': 1522688015269987, 'ori_shape': (1920, 1280), 'img_shape': (1920, 1280),
+        #  'lidar2image': [array([[-1.8736277e+03,  1.2657885e+03,  3.7847519e+01, -1.5178189e+02],
         if "img" in data:
             for k, image_path in enumerate(metas["filename"]):
                 image = mmcv.imread(image_path)
@@ -218,6 +235,8 @@ def main() -> None:
                     bboxes=bboxes,
                     labels=labels,
                     transform=metas["lidar2image"][k],
+                    camera_distortions=metas["camera_distortions"][k] if "camera_distortions" in metas else None,
+                    camera_intrinsics=camera_intrinsics[k].numpy() if camera_intrinsics is not None else None,
                     classes=cfg.object_classes,
                     dataset_type=dataset_type
                 )

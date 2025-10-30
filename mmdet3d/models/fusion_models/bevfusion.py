@@ -119,6 +119,9 @@ class BEVFusion(Base3DFusionModel):
         gt_depths=None,
     ) -> torch.Tensor:
         B, N, C, H, W = x.size()
+        if not hasattr(self, '_camera_count_logged'):
+            print(f"[INFO] Camera images per sample: {N} cameras (Batch size: {B}, Image shape: {C}x{H}x{W})")
+            self._camera_count_logged = True
         x = x.view(B * N, C, H, W)
 
         x = self.encoders["camera"]["backbone"](x)
