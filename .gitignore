@@ -142,7 +142,8 @@ viz_waymo_train_result/
 .dist_test/
 
 waymo-od/*
-waymo-od/
+
+
 *.pem
 *.pub
 
@@ -155,3 +156,4 @@ wamodataset.tar.gz
 # torch hipify generated files
 *_hip.*
 *.hip
+waymo-od
