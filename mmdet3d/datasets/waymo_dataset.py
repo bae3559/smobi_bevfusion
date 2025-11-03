@@ -8,14 +8,14 @@ from .custom_3d import Custom3DDataset
 
 @DATASETS.register_module()
 class WaymoDataset(Custom3DDataset):
-    CLASSES = ('vehicle', 'pedestrian', 'cyclist', 'sign')
+    CLASSES = ('vehicle', 'pedestrian',  'sign','cyclist')
 
     # Waymo converter에서 사용된 원래 매핑 (잘못된 매핑)
     WAYMO_ORIGINAL_MAPPING = {
         1: "vehicle",     # 정상
         2: "pedestrian",  # 정상
-        3: "cyclist",        # 잘못됨 - cyclist와 바뀜
-        4: "sign"      # 잘못됨 - sign과 바뀜
+        3: "sign",        # 잘못됨 - cyclist와 바뀜
+        4: "cyclist"      # 잘못됨 - sign과 바뀜
     }
     
     def __init__(self,

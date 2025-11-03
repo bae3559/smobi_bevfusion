@@ -29,8 +29,9 @@ augment3d:
 object_classes:
   - vehicle
   - pedestrian
-  - cyclist
   - sign
+  - cyclist
+
 
 map_classes:
   - drivable_area

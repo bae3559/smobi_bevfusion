@@ -84,6 +84,7 @@ ipython_config.py
 # pyenv
 .python-version
 
+*.bin
 # pipenv
 #   According to pypa/pipenv#598, it is recommended to include Pipfile.lock in version control.
 #   However, in case of collaboration, if having platform-specific dependencies or dependencies
@@ -139,6 +140,11 @@ visualize/*
 work_dirs/*
 viz_waymo_train_result/
 .dist_test/
+
+waymo-od/*
+
+*.pem
+*.pub
 
 # Large dataset files
 *.tar.gz
