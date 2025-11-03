@@ -142,7 +142,7 @@ viz_waymo_train_result/
 .dist_test/
 
 waymo-od/*
-
+waymo-od/
 *.pem
 *.pub
 
