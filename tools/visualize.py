@@ -59,13 +59,15 @@ def main() -> None:
 
     # build the dataloader
     # Force test_mode=True and use test pipeline for visualization (no augmentation)
-    dataset_cfg = cfg.data[args.split]
     if args.split == "train":
-        # Use train data but with test pipeline (no augmentation)
-        dataset_cfg = dataset_cfg.copy()
-        dataset_cfg['test_mode'] = True
-        dataset_cfg['pipeline'] = cfg.data.test.pipeline
-        print("[INFO] Using train dataset with test pipeline (no augmentation) for visualization")
+        # IMPORTANT: Use train split but with val pipeline (no augmentation)
+        # This ensures we visualize original images without rotation/flip/crop
+        dataset_cfg = cfg.data.train.copy()
+        dataset_cfg['test_mode'] = False  # Keep test_mode=False to load GT annotations
+        dataset_cfg['pipeline'] = cfg.data.val.pipeline  # Use val pipeline (no augmentation)
+        print("[INFO] Using train split with validation pipeline (no augmentation)")
+    else:
+        dataset_cfg = cfg.data[args.split]
 
     dataset = build_dataset(dataset_cfg)
     dataflow = build_dataloader(

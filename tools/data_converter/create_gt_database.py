@@ -324,9 +324,17 @@ def create_groundtruth_database(
             )
 
         for i in range(num_obj):
+            # 원래코드
+            # filename = f"{image_idx}_{names[i]}_{i}.bin"
+            # abs_filepath = osp.join(database_save_path, filename)
+            # rel_filepath = osp.join(f"{info_prefix}_gt_database", filename)
+
+            # 폴더 내 파일 개수 제한 오버했을 때, 오류 방지용
+            class_folder = names[i]
             filename = f"{image_idx}_{names[i]}_{i}.bin"
-            abs_filepath = osp.join(database_save_path, filename)
-            rel_filepath = osp.join(f"{info_prefix}_gt_database", filename)
+            abs_filepath = osp.join(database_save_path, class_folder, filename)
+            rel_filepath = osp.join(f"{info_prefix}_gt_database", class_folder, filename)
+            mmcv.mkdir_or_exist(osp.join(database_save_path,class_folder))
 
             # save point clouds and image patches for each object
             gt_points = points[point_indices[:, i]]

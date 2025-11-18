@@ -14,6 +14,7 @@ from mmdet3d.runner import CustomEpochBasedRunner
 from mmdet3d.utils import get_root_logger
 from mmdet.core import DistEvalHook
 from mmdet.datasets import build_dataloader, build_dataset, replace_ImageToTensor
+from mmdet3d.core.hook.eval_hook_with_cache_clear import DistEvalHookWithCacheClear
 
 
 def train_model(
@@ -116,7 +117,8 @@ def train_model(
         )
         eval_cfg = cfg.get("evaluation", {})
         eval_cfg["by_epoch"] = cfg.runner["type"] != "IterBasedRunner"
-        eval_hook = DistEvalHook
+        # Use custom eval hook that clears CUDA cache after evaluation
+        eval_hook = DistEvalHookWithCacheClear
         runner.register_hook(eval_hook(val_dataloader, **eval_cfg))
 
     if cfg.resume_from:

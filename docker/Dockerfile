@@ -1,4 +1,4 @@
-FROM nvidia/cuda:11.3.1-devel-ubuntu20.04
+FROM nvidia/cuda:11.3.1-cudnn8-devel-ubuntu20.04
 
 # 환경변수 설정 (비인터랙티브 설치 + 타임존 지정)
 ENV DEBIAN_FRONTEND=noninteractive

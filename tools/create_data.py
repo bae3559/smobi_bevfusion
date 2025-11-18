@@ -2,6 +2,7 @@ import argparse
 
 from data_converter import nuscenes_converter as nuscenes_converter
 from tools.data_converter import waymo_converter
+from tools.data_converter import waymo_converter_sweeps
 from data_converter.create_gt_database import create_groundtruth_database
 
 
@@ -139,10 +140,12 @@ if __name__ == "__main__":
     elif args.dataset == 'waymo' and args.version=="mini":
         #train_version = f"{args.version}"
         # Waymo mini는 보통 segment가 2~3개라 train/val을 코드 안에서 바로 나눔
+        # Use sweep version for better temporal information
         waymo_converter.create_waymo_infos_mini(
             root_path=args.root_path,
             out_dir=args.out_dir,
             version=args.version,
+            # max_sweeps=args.max_sweeps,
             extra_tag=args.extra_tag,
             create_dummy_back=(not args.no_dummy_back)
         )
@@ -154,7 +157,8 @@ if __name__ == "__main__":
             load_augmented=load_augmented,
         )
     elif args.dataset == 'waymo' and args.version!="mini":
-        train_version = f"{args.version}-trainval"
+
+        train_version = "trainval"
         waymo_converter.create_waymo_infos(
             root_path=args.root_path,
             out_dir=args.out_dir,
@@ -169,7 +173,7 @@ if __name__ == "__main__":
             f"{args.out_dir}/{args.extra_tag}_infos_train.pkl",
             load_augmented=load_augmented,
         )
-        test_version = f"{args.version}-test"
+        test_version = "test"
         waymo_converter.create_waymo_infos(
             root_path=args.root_path,
             out_dir=args.out_dir,
@@ -181,6 +185,6 @@ if __name__ == "__main__":
             "WaymoDataset",
             args.root_path,
             args.extra_tag,
-            f"{args.out_dir}/{args.extra_tag}_infos_train.pkl",
+            f"{args.out_dir}/{args.extra_tag}_infos_test.pkl",
             load_augmented=load_augmented,
         )

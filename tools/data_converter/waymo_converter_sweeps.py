@@ -235,8 +235,8 @@ def parse_tfrecord(tfrecord_path, out_dir, create_dummy_back=True):
 
             # 후방 카메라 위치 (ego vehicle 뒤쪽, 180도 회전)
             dummy_extrinsic = np.array([
-                [-1.0, 0.0, 0.0, -1.0],  # 뒤쪽 1.5m, 180도 회전 (front를 향함)
-                [0.0, -1.0, 0.0, 0.0],   # Y축 반전 (-1 이었는데 , 1로 바꿈)
+                [-1.0, 0.0, 0.0, -1.5],  # 뒤쪽 1.5m, 180도 회전 (front를 향함)
+                [0.0, -1.0, 0.0, 0.0],   # Y축 반전
                 [0.0, 0.0, 1.0, 2.1],    # 높이는 다른 카메라와 동일
                 [0.0, 0.0, 0.0, 1.0]
             ], dtype=np.float32)
@@ -326,48 +326,349 @@ def parse_tfrecord(tfrecord_path, out_dir, create_dummy_back=True):
         infos.append(info)
 
     return infos
-from tqdm import tqdm
+
 def create_waymo_infos(root_path, out_dir, version, extra_tag="waymo", create_dummy_back=True):
     if version == "trainval":
-        train_tfrecords = sorted(Path(root_path, "training").rglob("*.tfrecord"))
-        val_tfrecords = sorted(Path(root_path, "validation").rglob("*.tfrecord"))
+        train_tfrecords = sorted(Path(root_path , "/training").rglob("*.tfrecord"))
+        val_tfrecords = sorted(Path(root_path , "/validatiaon").rglob("*.tfrecord"))
         train_infos = []
-        for tfrecord in tqdm(train_tfrecords, desc="train tfrecords"):
-           train_infos.extend(parse_tfrecord(str(tfrecord), out_dir, create_dummy_back))
+        for tfrecord in train_tfrecords:
+            train_infos.extend(parse_tfrecord(str(tfrecord), out_dir, create_dummy_back))
         out_file_train = Path(out_dir) / f"{extra_tag}_infos_train.pkl"
         mmcv.dump(dict(infos=train_infos, metadata=dict(version=version)), str(out_file_train))
         print(f"Saved {len(train_infos)} frames to {out_file_train}")
         val_infos = []
-        for tfrecord in tqdm(val_tfrecords, desc="val tfrecords"):
+        for tfrecord in val_tfrecords:
             val_infos.extend(parse_tfrecord(str(tfrecord), out_dir, create_dummy_back))
         out_file_val = Path(out_dir) / f"{extra_tag}_infos_val.pkl"
         mmcv.dump(dict(infos=val_infos, metadata=dict(version=version)), str(out_file_val))
         print(f"Saved {len(val_infos)} frames to {out_file_val}")
     elif version== "test":
-        test_tfrecords = sorted(Path(root_path , "/testing").rglob("*.tfrecord"))
+        test_tfrecords = sorted(Path(root_path , "/test").rglob("*.tfrecord"))
         test_infos = []
         for tfrecord in test_tfrecords:
             test_infos.extend(parse_tfrecord(str(tfrecord), out_dir, create_dummy_back))
-        out_file_val = Path(out_dir) / f"{extra_tag}_infos_test.pkl"
+        out_file_val = Path(out_dir) / f"{extra_tag}_infos_val.pkl"
         mmcv.dump(dict(infos=test_infos, metadata=dict(version=version)), str(out_file_val))
         print(f"Saved {len(test_infos)} frames to {out_file_val}")
 
 
 
-def create_waymo_infos_mini(root_path, out_dir, version="mini", extra_tag="waymo", create_dummy_back=True):
+def create_waymo_infos_mini(root_path, out_dir, version="mini", extra_tag="waymo", create_dummy_back=True, max_sweeps=9):
     train_tfrecords = sorted(Path(root_path, "waymo_format/training").rglob("*.tfrecord"))
     val_tfrecords = sorted(Path(root_path, "waymo_format/validation").rglob("*.tfrecord"))
 
     train_infos = []
     for tfrecord in train_tfrecords:
-        train_infos.extend(parse_tfrecord(str(tfrecord), out_dir, create_dummy_back))
+        train_infos.extend(parse_tfrecord_with_sweeps(str(tfrecord), out_dir, create_dummy_back, max_sweeps))
     out_file_train = Path(out_dir) / f"{extra_tag}_infos_train.pkl"
     mmcv.dump(dict(infos=train_infos, metadata=dict(version=version)), str(out_file_train))
-    print(f"Saved {len(train_infos)} frames to {out_file_train}")
+    print(f"Saved {len(train_infos)} training frames with sweeps to {out_file_train}")
 
     val_infos = []
     for tfrecord in val_tfrecords:
-        val_infos.extend(parse_tfrecord(str(tfrecord), out_dir, create_dummy_back))
+        val_infos.extend(parse_tfrecord_with_sweeps(str(tfrecord), out_dir, create_dummy_back, max_sweeps))
     out_file_val = Path(out_dir) / f"{extra_tag}_infos_val.pkl"
     mmcv.dump(dict(infos=val_infos, metadata=dict(version=version)), str(out_file_val))
-    print(f"Saved {len(val_infos)} frames to {out_file_val}")
+    print(f"Saved {len(val_infos)} validation frames with sweeps to {out_file_val}")
+
+
+def parse_tfrecord_with_sweeps(tfrecord_path, out_dir, create_dummy_back=True, max_sweeps=9):
+    """Parse tfrecord and add sweep information from previous frames.
+
+    Like NuScenes, we try to always have max_sweeps sweeps by using frames
+    from the end of the sequence when at the beginning.
+    """
+    dataset = tf.data.TFRecordDataset(tfrecord_path, compression_type='')
+
+    # First pass: collect all frames and group by sequence
+    all_frames = []
+    for data in dataset:
+        frame = open_dataset.Frame()
+        frame.ParseFromString(bytearray(data.numpy()))
+        all_frames.append(frame)
+
+    print(f"Processing {len(all_frames)} frames from {tfrecord_path}")
+
+    # Second pass: process each frame using original parse_tfrecord logic (no sweeps)
+    infos = []
+    for frame_idx, frame in enumerate(all_frames):
+        # Process this frame using original parse_tfrecord (but for single frame)
+        single_frame_infos = parse_tfrecord_single_frame(frame, out_dir, create_dummy_back)
+        info = single_frame_infos[0]  # parse_tfrecord returns list with one element
+
+        # No sweeps - each frame is independent (for single-frame LiDAR processing)
+        info['sweeps'] = []
+        infos.append(info)
+
+    return infos
+
+
+def parse_tfrecord_single_frame(frame, out_dir, create_dummy_back=True):
+    """Process a single frame using the exact same logic as parse_tfrecord."""
+    # This is a wrapper to reuse parse_tfrecord logic for a single frame
+    # We create a temporary in-memory dataset with just this frame
+    infos = []
+
+    frame_idx = f"{frame.context.name}_{frame.timestamp_micros}"
+
+    ## Get LiDAR calibration
+    top_laser = next(l for l in frame.context.laser_calibrations
+                     if l.name == open_dataset.LaserName.TOP)
+    lidar2ego = np.array(top_laser.extrinsic.transform, dtype=np.float32).reshape(4, 4)
+
+    ## Process point cloud (same as parse_tfrecord)
+    from waymo_open_dataset.utils import range_image_utils, transform_utils
+
+    (range_images, camera_projections, seg_labels, range_image_top_pose) = \
+        frame_utils.parse_range_image_and_camera_projection(frame)
+
+    calibrations = sorted(frame.context.laser_calibrations, key=lambda c: c.name)
+    points_list = []
+
+    frame_pose = tf.convert_to_tensor(
+        value=np.reshape(np.array(frame.pose.transform), [4, 4]))
+    range_image_top_pose_tensor = tf.reshape(
+        tf.convert_to_tensor(value=range_image_top_pose.data),
+        range_image_top_pose.shape.dims)
+    range_image_top_pose_tensor_rotation = \
+        transform_utils.get_rotation_matrix(
+            range_image_top_pose_tensor[..., 0],
+            range_image_top_pose_tensor[..., 1],
+            range_image_top_pose_tensor[..., 2])
+    range_image_top_pose_tensor_translation = \
+        range_image_top_pose_tensor[..., 3:]
+    range_image_top_pose_tensor = transform_utils.get_transform(
+        range_image_top_pose_tensor_rotation,
+        range_image_top_pose_tensor_translation)
+
+    for ri_index in [0, 1]:
+        for c in calibrations:
+            range_image = range_images[c.name][ri_index]
+            if len(c.beam_inclinations) == 0:
+                beam_inclinations = range_image_utils.compute_inclination(
+                    tf.constant([c.beam_inclination_min, c.beam_inclination_max]),
+                    height=range_image.shape.dims[0])
+            else:
+                beam_inclinations = tf.constant(c.beam_inclinations)
+
+            beam_inclinations = tf.reverse(beam_inclinations, axis=[-1])
+            extrinsic = np.reshape(np.array(c.extrinsic.transform), [4, 4])
+
+            range_image_tensor = tf.reshape(
+                tf.convert_to_tensor(value=range_image.data), range_image.shape.dims)
+            pixel_pose_local = None
+            frame_pose_local = None
+            if c.name == open_dataset.LaserName.TOP:
+                pixel_pose_local = range_image_top_pose_tensor
+                pixel_pose_local = tf.expand_dims(pixel_pose_local, axis=0)
+                frame_pose_local = tf.expand_dims(frame_pose, axis=0)
+
+            range_image_mask = range_image_tensor[..., 0] > 0
+            nlz_mask = range_image_tensor[..., 3] != 1.0
+            range_image_mask = range_image_mask & nlz_mask
+
+            range_image_cartesian = range_image_utils.extract_point_cloud_from_range_image(
+                tf.expand_dims(range_image_tensor[..., 0], axis=0),
+                tf.expand_dims(extrinsic, axis=0),
+                tf.expand_dims(beam_inclinations, axis=0),
+                pixel_pose=pixel_pose_local,
+                frame_pose=frame_pose_local)
+
+            # Remove batch dimension
+            range_image_cartesian = tf.squeeze(range_image_cartesian, axis=0)
+
+            points_tensor = tf.gather_nd(range_image_cartesian,
+                                          tf.where(range_image_mask))
+            intensity = tf.gather_nd(range_image_tensor[..., 1],
+                                     tf.where(range_image_mask))
+            elongation = tf.gather_nd(range_image_tensor[..., 2],
+                                       tf.where(range_image_mask))
+
+            points_ri2 = tf.concat([points_tensor, intensity[..., None],
+                                    elongation[..., None]], axis=-1).numpy()
+            points_list.append(points_ri2)
+
+    points_all = np.concatenate(points_list, axis=0).astype(np.float32)
+
+    lidar_path = Path(out_dir) /"lidar"/ f"{frame_idx}.bin"
+    lidar_path.parent.mkdir(parents=True, exist_ok=True)
+    points_all.tofile(str(lidar_path))
+
+    ## Process cameras (EXACT same as parse_tfrecord)
+    cams = {}
+    waymo_to_nuscenes_cam = {
+        open_dataset.CameraName.FRONT: "CAM_FRONT",
+        open_dataset.CameraName.FRONT_LEFT: "CAM_FRONT_LEFT",
+        open_dataset.CameraName.FRONT_RIGHT: "CAM_FRONT_RIGHT",
+        open_dataset.CameraName.SIDE_LEFT: "CAM_BACK_LEFT",
+        open_dataset.CameraName.SIDE_RIGHT: "CAM_BACK_RIGHT"
+    }
+
+    for img in frame.images:
+        if img.name in waymo_to_nuscenes_cam:
+            nuscenes_cam_name = waymo_to_nuscenes_cam[img.name]
+
+            # Save image to images/{cam_name}/{frame_idx}.jpg
+            img_dir = Path(out_dir) / "images" / nuscenes_cam_name
+            img_dir.mkdir(parents=True, exist_ok=True)
+            img_path = img_dir / f"{frame_idx}.jpg"
+            with open(img_path, "wb") as f:
+                f.write(img.image)
+
+            # Get calibration
+            calib = next((c for c in frame.context.camera_calibrations if c.name == img.name), None)
+            if calib is not None:
+                intrinsic_params = np.array(calib.intrinsic, dtype=np.float32)
+                fx, fy, cx, cy = intrinsic_params[0], intrinsic_params[1], intrinsic_params[2], intrinsic_params[3]
+                intrinsics = np.array([[fx,  0, cx],
+                                     [ 0, fy, cy],
+                                     [ 0,  0,  1]], dtype=np.float32)
+
+                if len(intrinsic_params) >= 9:
+                    distortion = intrinsic_params[4:9]
+                else:
+                    distortion = np.zeros(5, dtype=np.float32)
+
+                extrinsic = np.reshape(np.array(calib.extrinsic.transform), [4, 4])
+            else:
+                intrinsics = np.eye(3)
+                extrinsic = np.eye(4)
+                distortion = np.zeros(5, dtype=np.float32)
+
+            sensor2ego_rotation = extrinsic[:3, :3]
+            sensor2ego_translation = extrinsic[:3, 3]
+
+            sensor2lidar = np.linalg.inv(lidar2ego) @ extrinsic
+            sensor2lidar_rotation = sensor2lidar[:3, :3]
+            sensor2lidar_translation = sensor2lidar[:3, 3]
+
+            cam_timestamp = img.pose_timestamp if hasattr(img, 'pose_timestamp') and img.pose_timestamp > 0 else frame.timestamp_micros
+
+            cams[nuscenes_cam_name] = dict(
+                data_path=str(img_path),
+                cam_intrinsic=intrinsics,
+                cam_distortion=distortion,
+                sensor2ego_rotation=sensor2ego_rotation,
+                sensor2ego_translation=sensor2ego_translation,
+                sensor2lidar_rotation=sensor2lidar_rotation,
+                sensor2lidar_translation=sensor2lidar_translation,
+                timestamp=cam_timestamp,
+            )
+
+    # Add dummy CAM_BACK if needed (same as original)
+    if create_dummy_back and 'CAM_BACK' not in cams:
+        from PIL import Image as PILImage
+        dummy_img_dir = Path(out_dir) / "images" / "CAM_BACK"
+        dummy_img_dir.mkdir(parents=True, exist_ok=True)
+        dummy_img_path = dummy_img_dir / f"{frame_idx}.jpg"
+
+        dummy_img = PILImage.fromarray(np.zeros((1280, 1920, 3), dtype=np.uint8))
+        dummy_img.save(dummy_img_path)
+
+        dummy_intrinsics = np.array([
+            [2050.0, 0.0, 960.0],
+            [0.0, 2050.0, 640.0],
+            [0.0, 0.0, 1.0]
+        ], dtype=np.float32)
+
+        dummy_extrinsic = np.array([
+            [-1.0, 0.0, 0.0, -1.5],
+            [0.0, -1.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 2.1],
+            [0.0, 0.0, 0.0, 1.0]
+        ], dtype=np.float32)
+
+        dummy_sensor2lidar = np.linalg.inv(lidar2ego) @ dummy_extrinsic
+        dummy_sensor2lidar_rotation = dummy_sensor2lidar[:3, :3]
+        dummy_sensor2lidar_translation = dummy_sensor2lidar[:3, 3]
+
+        cams['CAM_BACK'] = dict(
+            data_path=str(dummy_img_path),
+            cam_intrinsic=dummy_intrinsics,
+            cam_distortion=np.zeros(5, dtype=np.float32),
+            sensor2ego_rotation=dummy_extrinsic[:3, :3],
+            sensor2ego_translation=dummy_extrinsic[:3, 3],
+            sensor2lidar_rotation=dummy_sensor2lidar_rotation,
+            sensor2lidar_translation=dummy_sensor2lidar_translation,
+            timestamp=frame.timestamp_micros,
+        )
+
+    ## Process 3D boxes (same as original)
+    gt_boxes = []
+    gt_names = []
+    num_pts = []
+
+    ego2global_translation = np.array(frame.pose.transform[9:12], dtype=np.float32)
+    ego2global_rotation = np.array(frame.pose.transform).reshape(4, 4)[:3, :3].astype(np.float32)
+
+    for label in frame.laser_labels:
+        if label.type not in WAYMO_CLASSES:
+            continue
+
+        box = label.box
+        gt_box = np.array([
+            box.center_x, box.center_y, box.center_z,
+            box.length, box.width, box.height,
+            box.heading
+        ], dtype=np.float32)
+
+        gt_boxes.append(gt_box)
+        gt_names.append(WAYMO_CLASSES[label.type])
+        num_pts.append(label.num_lidar_points_in_box)
+
+    gt_boxes = np.array(gt_boxes, dtype=np.float32) if gt_boxes else np.zeros((0, 7), dtype=np.float32)
+
+    ## Build info dict
+    info = dict(
+        lidar_path=str(lidar_path),
+        token=frame_idx,
+        sweeps=[],  # Will be filled by parse_tfrecord_with_sweeps
+        cams=cams,
+        lidar2ego_translation=lidar2ego[:3, 3],
+        lidar2ego_rotation=lidar2ego[:3, :3],
+        ego2global_translation=ego2global_translation,
+        ego2global_rotation=ego2global_rotation,
+        timestamp=frame.timestamp_micros,
+        gt_boxes=gt_boxes,
+        gt_names=np.array(gt_names),
+        num_lidar_pts=np.array(num_pts, dtype=np.int32),
+    )
+
+    return [info]
+
+
+def create_sweep_info(sweep_frame, keyframe, out_dir):
+    """Create sweep information for a previous frame relative to keyframe."""
+    sweep_idx = f"{sweep_frame.context.name}_{sweep_frame.timestamp_micros}"
+
+    # Get sweep lidar path (should already exist from parse_tfrecord_single_frame)
+    sweep_lidar_path = Path(out_dir) / "lidar"/ f"{sweep_idx}.bin"
+
+    # Get transforms
+    sweep_top_laser = next(l for l in sweep_frame.context.laser_calibrations
+                           if l.name == open_dataset.LaserName.TOP)
+    sweep_lidar2ego = np.array(sweep_top_laser.extrinsic.transform, dtype=np.float32).reshape(4, 4)
+
+    keyframe_top_laser = next(l for l in keyframe.context.laser_calibrations
+                               if l.name == open_dataset.LaserName.TOP)
+    keyframe_lidar2ego = np.array(keyframe_top_laser.extrinsic.transform, dtype=np.float32).reshape(4, 4)
+
+    # Sweep ego pose
+    sweep_ego2global = np.array(sweep_frame.pose.transform, dtype=np.float32).reshape(4, 4)
+    keyframe_ego2global = np.array(keyframe.pose.transform, dtype=np.float32).reshape(4, 4)
+
+    # Transformation: sweep_lidar -> sweep_ego -> global -> keyframe_ego -> keyframe_lidar
+    global2keyframe_ego = np.linalg.inv(keyframe_ego2global)
+    sweep_ego2keyframe_ego = global2keyframe_ego @ sweep_ego2global
+    keyframe_ego2keyframe_lidar = np.linalg.inv(keyframe_lidar2ego)
+    sweep_lidar2keyframe_lidar = keyframe_ego2keyframe_lidar @ sweep_ego2keyframe_ego @ sweep_lidar2ego
+
+    sweep_info = dict(
+        data_path=str(sweep_lidar_path),
+        timestamp=sweep_frame.timestamp_micros,
+        sensor2lidar_rotation=sweep_lidar2keyframe_lidar[:3, :3].astype(np.float32),
+        sensor2lidar_translation=sweep_lidar2keyframe_lidar[:3, 3].astype(np.float32),
+    )
+
+    return sweep_info

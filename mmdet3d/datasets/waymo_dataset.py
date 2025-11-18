@@ -6,6 +6,7 @@ from scipy.spatial.transform import Rotation
 from ..core.bbox import LiDARInstance3DBoxes
 from .custom_3d import Custom3DDataset
 
+
 @DATASETS.register_module()
 class WaymoDataset(Custom3DDataset):
     CLASSES = ('vehicle', 'pedestrian',  'sign','cyclist')
@@ -74,7 +75,8 @@ class WaymoDataset(Custom3DDataset):
         # 유효한 mask 생성
         mask = num_lidar_pts > 0
 
-        gt_bboxes_3d = gt_boxes[mask]
+        #gt_bboxes_3d = gt_boxes[mask]
+        gt_bboxes_3d = self._ensure_2d(gt_boxes[mask], 7, dtype=np.float32)
         gt_names_3d = gt_names[mask]
 
         # 클래스 인덱스 변환
@@ -85,6 +87,7 @@ class WaymoDataset(Custom3DDataset):
             else:
                 gt_labels_3d.append(-1)
         gt_labels_3d = np.array(gt_labels_3d)
+
 
         # 속도 정보 추가 (Waymo는 velocity 없으므로 0으로 채움)
         if self.with_velocity:
@@ -177,7 +180,7 @@ class WaymoDataset(Custom3DDataset):
         input_dict = dict(
             sample_idx=index,
             lidar_path=info["lidar_path"],
-            sweeps=info.get("sweeps", []),
+            sweeps=info["sweeps"],
             timestamp=info["timestamp"],
             lidar2ego=lidar2ego,
             ego2global=ego2global,
@@ -332,7 +335,18 @@ class WaymoDataset(Custom3DDataset):
                 tmp_dir.cleanup()
 
         return metrics
-
+    def _ensure_2d(self, arr, k, dtype=np.float32):
+        """빈/1D 배열을 (0,k)/(1,k) 형태로 보정."""
+        arr = np.array(arr, dtype=dtype)
+        if arr.size == 0:
+            return np.zeros((0, k), dtype=dtype)
+        if arr.ndim == 1:
+            if arr.shape[0] == k:
+                return arr.reshape(1, k)
+            if arr.shape[0] % k == 0:
+                return arr.reshape(arr.shape[0] // k, k)
+            return np.zeros((0, k), dtype=dtype)  # 애매하면 보수적으로 빈 것으로
+        return arr
     def format_results(self, results, jsonfile_prefix=None):
         """Format the results to json (standard format for Waymo evaluation).
 
@@ -1011,6 +1025,7 @@ class WaymoDataset(Custom3DDataset):
 
         nds = (5 * map_score + sum(tp_metrics)) / 10.0
         return nds
+
 
 
 def output_to_waymo_box(detection):

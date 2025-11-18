@@ -1,7 +1,7 @@
 
 
 dataset_type: WaymoDataset
-dataset_root: data/waymo/Waymo_mini/
+dataset_root: data/Waymodataset/
 gt_paste_stop_epoch: -1
 reduce_beams: 32
 load_dim: 5
@@ -287,7 +287,7 @@ data:
     box_type_3d: LiDAR
 
 evaluation:
-  interval: 5
+  interval: 25
   pipeline: ${test_pipeline}
  
 custom_hooks:

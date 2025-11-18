@@ -18,10 +18,10 @@ resume_from: null
 
 cudnn_benchmark: false
 fp16:
+  # null
   loss_scale: 
     growth_interval: 2000
-
-
+# lidar-only로 학습할 때, fp16: null fp16켜면 nan 뜸.
 max_epochs: 20
 runner:
   type: CustomEpochBasedRunner
