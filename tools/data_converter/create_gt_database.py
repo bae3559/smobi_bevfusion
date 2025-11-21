@@ -231,6 +231,64 @@ def create_groundtruth_database(
                 use_camera=False,
             ),
             '''
+    elif dataset_class_name == "MANTruckScenesDataset":
+        if not load_augmented:
+            print("not load_augemented")
+            dataset_cfg.update(
+                use_valid_flag=True,
+                pipeline=[
+                    dict(
+                        type="LoadPointsFromFile",
+                        coord_type="LIDAR",
+                        load_dim=5,
+                        use_dim=5,
+                    ),
+                    dict(
+                        type="LoadPointsFromMultiSweeps",
+                        sweeps_num=10,
+                        use_dim=[0, 1, 2, 3, 4],
+                        pad_empty_sweeps=True,
+                        remove_close=True,
+                    ),
+                    dict(
+                        type="LoadAnnotations3D", with_bbox_3d=True, with_label_3d=True
+                    ),
+                ],
+            )
+        else:
+            print("not ?")
+            dataset_cfg.update(
+                use_valid_flag=True,
+                pipeline=[
+                    dict(
+                        type="LoadPointsFromFile",
+                        coord_type="LIDAR",
+                        load_dim=16,
+                        use_dim=list(range(16)),
+                        load_augmented=load_augmented,
+                    ),
+                    dict(
+                        type="LoadPointsFromMultiSweeps",
+                        sweeps_num=10,
+                        load_dim=16,
+                        use_dim=list(range(16)),
+                        pad_empty_sweeps=True,
+                        remove_close=True,
+                        load_augmented=load_augmented,
+                    ),
+                    dict(
+                        type="LoadAnnotations3D", with_bbox_3d=True, with_label_3d=True
+                    ),
+                ],
+            )
+            '''
+            modality=dict(
+                use_lidar=True,
+                use_depth=False,
+                use_lidar_intensity=False,
+                use_camera=False,
+            ),
+            '''
     elif dataset_class_name == "WaymoDataset":
         dataset_cfg.update(
             test_mode=False,

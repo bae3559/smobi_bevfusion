@@ -63,9 +63,19 @@ def main() -> None:
         # IMPORTANT: Use train split but with val pipeline (no augmentation)
         # This ensures we visualize original images without rotation/flip/crop
         dataset_cfg = cfg.data.train.copy()
+
+        # If wrapped in CBGSDataset, unwrap it and modify the inner dataset
+        if dataset_cfg.get('type') == 'CBGSDataset':
+            print("[INFO] Detected CBGSDataset wrapper, unwrapping...")
+            dataset_cfg = dataset_cfg['dataset'].copy()
+
         dataset_cfg['test_mode'] = False  # Keep test_mode=False to load GT annotations
         dataset_cfg['pipeline'] = cfg.data.val.pipeline  # Use val pipeline (no augmentation)
         print("[INFO] Using train split with validation pipeline (no augmentation)")
+        print(f"[DEBUG] Dataset type: {dataset_cfg.get('type')}")
+        print(f"[DEBUG] Pipeline steps:")
+        for i, step in enumerate(dataset_cfg['pipeline']):
+            print(f"  {i}: {step['type']} - is_train={step.get('is_train', 'N/A')}")
     else:
         dataset_cfg = cfg.data[args.split]
 
@@ -130,6 +140,16 @@ def main() -> None:
                 outputs = None
 
         if args.mode == "gt" and "gt_bboxes_3d" in data:
+            # Debug: check bbox before processing
+            raw_bboxes = data["gt_bboxes_3d"].data[0][0].tensor.numpy()
+            print(f"[DEBUG] Dataset type: {dataset_type}")
+            print(f"[DEBUG] Raw bbox shape: {raw_bboxes.shape}")
+            if len(raw_bboxes) > 0:
+                print(f"[DEBUG] First raw bbox: {raw_bboxes[0]}")
+                print(f"[DEBUG] Bbox X range: [{raw_bboxes[:, 0].min():.2f}, {raw_bboxes[:, 0].max():.2f}]")
+                print(f"[DEBUG] Bbox Y range: [{raw_bboxes[:, 1].min():.2f}, {raw_bboxes[:, 1].max():.2f}]")
+                print(f"[DEBUG] Bbox Z range: [{raw_bboxes[:, 2].min():.2f}, {raw_bboxes[:, 2].max():.2f}]")
+
             if dataset_type=="waymo":
                 bboxes = data["gt_bboxes_3d"].data[0][0].tensor.numpy()
 
@@ -161,17 +181,16 @@ def main() -> None:
 
                 print(f"Processing {len(bboxes)} boxes for visualization")
             else:
-                bboxes = data["gt_bboxes_3d"].data[0][0].tensor.numpy()
-                #print("boxes before LiDARInstance3DBoxes",bboxes )
+                # For nuScenes/mantruck: data already contains LiDARInstance3DBoxes
+                # Don't need to re-process, just use it directly
+                bboxes = data["gt_bboxes_3d"].data[0][0]
                 labels = data["gt_labels_3d"].data[0][0].numpy()
-
                 if args.bbox_classes is not None:
                     indices = np.isin(labels, args.bbox_classes)
                     bboxes = bboxes[indices]
                     labels = labels[indices]
 
-                bboxes[..., 2] -= bboxes[..., 5] / 2
-                bboxes = LiDARInstance3DBoxes(bboxes, box_dim=9)
+                # bboxes is already LiDARInstance3DBoxes, no need to convert
 
                 # Debug: print corners after LiDARInstance3DBoxes conversion
                 if len(bboxes) > 0:
@@ -245,7 +264,21 @@ def main() -> None:
 
         if "points" in data:
             lidar = data["points"].data[0][0].numpy()
+
+            # Debug: print LiDAR point cloud statistics
+            # print(f"[DEBUG] LiDAR points shape: {lidar.shape}")
+            # print(f"[DEBUG] X range: [{lidar[:, 0].min():.2f}, {lidar[:, 0].max():.2f}]")
+            # print(f"[DEBUG] Y range: [{lidar[:, 1].min():.2f}, {lidar[:, 1].max():.2f}]")
+            # print(f"[DEBUG] Z range: [{lidar[:, 2].min():.2f}, {lidar[:, 2].max():.2f}]")
+            # print(f"[DEBUG] Config point_cloud_range: {cfg.point_cloud_range}")
+
             lidar_image_path = os.path.join(args.out_dir, "lidar", f"{name}.png")
+
+            # Check if we need to swap X/Y for mantruck dataset
+            swap_xy = (dataset_type == "nuscenes" and
+                      hasattr(cfg, 'dataset_type') and
+                      'mantruck' in cfg.dataset_type.lower())
+
             visualize_lidar(
                 lidar_image_path,
                 lidar,
@@ -254,6 +287,7 @@ def main() -> None:
                 xlim=[cfg.point_cloud_range[d] for d in [0, 3]],
                 ylim=[cfg.point_cloud_range[d] for d in [1, 4]],
                 classes=cfg.object_classes,
+                swap_xy=swap_xy,
             )
 
         # Create collage if we have both camera and lidar images

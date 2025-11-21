@@ -142,6 +142,37 @@ class LoadPointsFromMultiSweeps:
             )
         elif lidar_path.endswith(".npy"):
             points = np.load(lidar_path)
+        elif lidar_path.endswith(".pcd"):
+            # Load PCD file using pypcd4 library
+            from pypcd4 import PointCloud
+            pc = PointCloud.from_path(lidar_path)
+            # pypcd4 returns structured array, convert to regular array
+            # Try different access methods
+            try:
+                # Method 1: Try pc_data attribute
+                pc_array = pc.pc_data
+            except AttributeError:
+                try:
+                    # Method 2: Try numpy() with structured array
+                    pc_array = pc.numpy()
+                except:
+                    # Method 3: Try to_ndarray()
+                    pc_array = pc.to_ndarray()
+
+            # Extract fields from structured array
+            if pc_array.dtype.names:
+                # Structured array
+                points = np.stack([
+                    pc_array['x'],
+                    pc_array['y'],
+                    pc_array['z'],
+                    pc_array['intensity'],
+                    pc_array['timestamp'].astype(np.float32)
+                ], axis=-1).astype(np.float32)
+            else:
+                # Already a regular array
+                points = pc_array[:, :5].astype(np.float32)
+            points = points.flatten()
         else:
             points = np.fromfile(lidar_path, dtype=np.float32)
         return points
@@ -377,6 +408,37 @@ class LoadPointsFromFile:
             )
         elif lidar_path.endswith(".npy"):
             points = np.load(lidar_path)
+        elif lidar_path.endswith(".pcd"):
+            # Load PCD file using pypcd4 library
+            from pypcd4 import PointCloud
+            pc = PointCloud.from_path(lidar_path)
+            # pypcd4 returns structured array, convert to regular array
+            # Try different access methods
+            try:
+                # Method 1: Try pc_data attribute
+                pc_array = pc.pc_data
+            except AttributeError:
+                try:
+                    # Method 2: Try numpy() with structured array
+                    pc_array = pc.numpy()
+                except:
+                    # Method 3: Try to_ndarray()
+                    pc_array = pc.to_ndarray()
+
+            # Extract fields from structured array
+            if pc_array.dtype.names:
+                # Structured array
+                points = np.stack([
+                    pc_array['x'],
+                    pc_array['y'],
+                    pc_array['z'],
+                    pc_array['intensity'],
+                    pc_array['timestamp'].astype(np.float32)
+                ], axis=-1).astype(np.float32)
+            else:
+                # Already a regular array
+                points = pc_array[:, :5].astype(np.float32)
+            points = points.flatten()
         else:
             points = np.fromfile(lidar_path, dtype=np.float32)
 

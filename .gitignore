@@ -140,7 +140,7 @@ visualize/*
 work_dirs/*
 viz_waymo_train_result/
 .dist_test/
-
+mantruck/
 
 
 *.pem

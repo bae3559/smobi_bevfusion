@@ -2,16 +2,17 @@ import mmcv
 import numpy as np
 import os
 from collections import OrderedDict
-from nuscenes.nuscenes import NuScenes
-from nuscenes.utils.geometry_utils import view_points
+# from nuscenes.nuscenes import NuScenes
+from truckscenes.truckscenes import TruckScenes
+from truckscenes.utils.geometry_utils import view_points
 from os import path as osp
 from pyquaternion import Quaternion
 from shapely.geometry import MultiPoint, box
 from typing import List, Tuple, Union
 
 from mmdet3d.core.bbox.box_np_ops import points_cam2img
-from mmdet3d.datasets import NuScenesDataset
-
+# from mmdet3d.datasets import NuScenesDataset
+from mmdet3d.datasets import MANTruckScenesDataset
 nus_categories = ('car', 'truck', 'trailer', 'bus', 'construction_vehicle',
                   'bicycle', 'motorcycle', 'pedestrian', 'traffic_cone',
                   'barrier')
@@ -21,8 +22,82 @@ nus_attributes = ('cycle.with_rider', 'cycle.without_rider',
                   'pedestrian.sitting_lying_down', 'vehicle.moving',
                   'vehicle.parked', 'vehicle.stopped', 'None')
 
+truck_categories = ('car', 'traffic_sign', 'truck', 'trailer', 'trafficcone', 
+                    'ego_trailer', 'adult', 'vehicle_other', 'bus_rigid', )
 
-def create_nuscenes_infos(root_path,
+truck_attributes = ('cycle.with_rider', 'cycle.without_rider',
+                  'pedestrian.moving', 'pedestrian.standing',
+                  'pedestrian.sitting_lying_down', 'vehicle.moving',
+                  'vehicle.parked', 'vehicle.stopped', 'traffic_sign.pole_mounted',
+                  'traffic_sign.temporary','traffic_sign.overhanging','None')
+
+def load_and_merge_lidar_sensors(trucks, sample, main_lidar_name='LIDAR_TOP_FRONT'):
+    """Load and merge all LiDAR sensors using TruckScenes from_file_multisweep.
+
+    Args:
+        nusc: TruckScenes instance
+        sample: Sample dict
+        main_lidar_name: Name of main/reference LiDAR sensor
+
+    Returns:
+        merged_points: Merged point cloud in main LiDAR coordinates (N, 5)
+        merged_path: Path where merged .bin file should be saved
+    """
+    from truckscenes.utils.data_classes import LidarPointCloud
+
+    # lidar_sensors = [
+    #     'LIDAR_TOP_FRONT',
+    #     'LIDAR_TOP_LEFT',
+    #     'LIDAR_TOP_RIGHT',
+    #     'LIDAR_LEFT',
+    #     'LIDAR_RIGHT',
+    #     'LIDAR_REAR'
+    # ]
+
+    # Initialize fused point cloud
+    points = np.zeros((LidarPointCloud.nbr_dims(), 0), dtype=np.float64)
+    timestamps = np.zeros((1, 0), dtype=np.uint64)
+    fused_point_cloud = LidarPointCloud(points, timestamps)
+
+    # Use specified sensor as reference
+    ref_chan = "LIDAR_LEFT"
+
+    print(f"[INFO] Merging LiDAR sensors for sample {sample['token'][:8]}...")
+    # Iterate over all lidar sensors and fuse their point clouds
+    for sensor in sample['data'].keys():
+        if 'lidar' not in sensor.lower():
+            continue
+
+        # Load pointcloud
+        point_cloud, _ = LidarPointCloud.from_file_multisweep(trucks, sample, chan=sensor, ref_chan=ref_chan, nsweeps=1)
+
+        # Merge with reference point cloud.
+        fused_point_cloud.points = np.hstack((fused_point_cloud.points, point_cloud.points))
+        if point_cloud.timestamps is not None:
+            fused_point_cloud.timestamps = np.hstack((fused_point_cloud.timestamps, point_cloud.timestamps))
+
+    # # Convert to (N, 5) format: [x, y, z, intensity, timestamp]
+    # # TruckScenes format is (4, N) or (5, N): [x, y, z, intensity] or [x, y, z, intensity, elongation]
+    merged_points = fused_point_cloud.points.T.astype(np.float32)
+
+    # # Ensure 5 columns (add zeros for timestamp if needed)
+    if merged_points.shape[1] < 5:
+        timestamp_col = np.zeros((merged_points.shape[0], 1), dtype=np.float32)
+        merged_points = np.hstack([merged_points, timestamp_col])
+
+    # # Take only first 5 columns
+    merged_points = merged_points[:, :5]
+
+    # print(f"  Total merged points: {len(fused_point_cloud)}")
+
+    # Create merged file path
+    main_token = sample['data'][main_lidar_name]
+    main_path = nusc.get_sample_data_path(main_token)
+    merged_path = str(main_path).replace('.pcd', '_merged.bin')
+
+    return merged_points, merged_path
+
+def create_mantruck_infos(root_path,
                           info_prefix,
                           version='v1.0-trainval',
                           max_sweeps=10, 
@@ -39,9 +114,9 @@ def create_nuscenes_infos(root_path,
         max_radar_sweeps (int): Max number of radar sweeps. 
             Default: 10
     """
-    from nuscenes.nuscenes import NuScenes
-    nusc = NuScenes(version=version, dataroot=root_path, verbose=True)
-    from nuscenes.utils import splits
+    from truckscenes.truckscenes import TruckScenes
+    trucks = TruckScenes(version=version, dataroot=root_path, verbose=True)
+    from truckscenes.utils import splits
     available_vers = ['v1.0-trainval', 'v1.0-test', 'v1.0-mini']
     assert version in available_vers
     if version == 'v1.0-trainval':
@@ -57,7 +132,7 @@ def create_nuscenes_infos(root_path,
         raise ValueError('unknown')
 
     # filter existing scenes.
-    available_scenes = get_available_scenes(nusc)
+    available_scenes = get_available_scenes(trucks)
     available_scene_names = [s['name'] for s in available_scenes]
     train_scenes = list(
         filter(lambda x: x in available_scene_names, train_scenes))
@@ -77,31 +152,31 @@ def create_nuscenes_infos(root_path,
     else:
         print('train scene: {}, val scene: {}'.format(
             len(train_scenes), len(val_scenes)))
-    train_nusc_infos, val_nusc_infos = _fill_trainval_infos(
-        nusc, train_scenes, val_scenes, test, max_sweeps=max_sweeps, max_radar_sweeps=max_radar_sweeps)
+    train_trucks_infos, val_trucks_infos = _fill_trainval_infos(
+        trucks, train_scenes, val_scenes, test, max_sweeps=max_sweeps, max_radar_sweeps=max_radar_sweeps)
 
     metadata = dict(version=version)
     if test:
-        print('test sample: {}'.format(len(train_nusc_infos)))
-        data = dict(infos=train_nusc_infos, metadata=metadata)
+        print('test sample: {}'.format(len(train_trucks_infos)))
+        data = dict(infos=train_trucks_infos, metadata=metadata)
         info_path = osp.join(root_path,
                              '{}_infos_test_radar.pkl'.format(info_prefix))
         mmcv.dump(data, info_path)
     else:
         print(info_prefix)
         print('train sample: {}, val sample: {}'.format(
-            len(train_nusc_infos), len(val_nusc_infos)))
-        data = dict(infos=train_nusc_infos, metadata=metadata)
-        info_path = osp.join(info_prefix,
-                             '{}_infos_train_radar.pkl'.format(info_prefix))
+            len(train_trucks_infos), len(val_trucks_infos)))
+        data = dict(infos=train_trucks_infos, metadata=metadata)
+        info_path = osp.join(root_path,
+                             '{}_infos_train.pkl'.format(info_prefix))
         mmcv.dump(data, info_path)
-        data['infos'] = val_nusc_infos
-        info_val_path = osp.join(info_prefix,
-                                 '{}_infos_val_radar.pkl'.format(info_prefix))
+        data['infos'] = val_trucks_infos
+        info_val_path = osp.join(root_path,
+                                 '{}_infos_val.pkl'.format(info_prefix))
         mmcv.dump(data, info_val_path)
 
 
-def get_available_scenes(nusc):
+def get_available_scenes(trucks):
     """Get available scenes from the input nuscenes class.
     Given the raw data, get the information of available scenes for
     further info generation.
@@ -112,16 +187,16 @@ def get_available_scenes(nusc):
             available scenes.
     """
     available_scenes = []
-    print('total scene num: {}'.format(len(nusc.scene)))
-    for scene in nusc.scene:
+    print('total scene num: {}'.format(len(trucks.scene)))
+    for scene in trucks.scene:
         scene_token = scene['token']
-        scene_rec = nusc.get('scene', scene_token)
-        sample_rec = nusc.get('sample', scene_rec['first_sample_token'])
-        sd_rec = nusc.get('sample_data', sample_rec['data']['LIDAR_TOP'])
+        scene_rec = trucks.get('scene', scene_token)
+        sample_rec = trucks.get('sample', scene_rec['first_sample_token'])
+        sd_rec = trucks.get('sample_data', sample_rec['data']['LIDAR_TOP_FRONT'])
         has_more_frames = True
         scene_not_exist = False
         while has_more_frames:
-            lidar_path, boxes, _ = nusc.get_sample_data(sd_rec['token'])
+            lidar_path, boxes, _ = trucks.get_sample_data(sd_rec['token'])
             lidar_path = str(lidar_path)
             if os.getcwd() in lidar_path:
                 # path from lyftdataset is absolute path
@@ -139,7 +214,7 @@ def get_available_scenes(nusc):
     return available_scenes
 
 
-def _fill_trainval_infos(nusc,
+def _fill_trainval_infos(trucks,
                          train_scenes,
                          val_scenes,
                          test=False,
@@ -158,23 +233,35 @@ def _fill_trainval_infos(nusc,
         tuple[list[dict]]: Information of training set and validation set
             that will be saved to the info file.
     """
-    train_nusc_infos = []
-    val_nusc_infos = []
+    train_trucks_infos = []
+    val_trucks_infos = []
     token2idx = {}
 
     i_ = 0
 
-    for sample in mmcv.track_iter_progress(nusc.sample):
+    for sample in mmcv.track_iter_progress(trucks.sample):
         # i_ += 1 
         # if i_ > 6: 
         #     break 
 
-        lidar_token = sample['data']['LIDAR_TOP']
-        sd_rec = nusc.get('sample_data', sample['data']['LIDAR_TOP'])
-        cs_record = nusc.get('calibrated_sensor',
-                             sd_rec['calibrated_sensor_token'])
-        pose_record = nusc.get('ego_pose', sd_rec['ego_pose_token'])
-        lidar_path, boxes, _ = nusc.get_sample_data(lidar_token)
+        # Merge all LiDAR sensors (using LIDAR_LEFT as reference)
+        print(f"[INFO] Merging LiDAR sensors for sample {sample['token'][:8]}...")
+        ref_lidar_name = 'LIDAR_LEFT'  # Use LIDAR_LEFT for wider FOV
+        merged_points, merged_path = load_and_merge_lidar_sensors(trucks, sample, main_lidar_name=ref_lidar_name)
+
+        # Save merged points
+        os.makedirs(os.path.dirname(merged_path), exist_ok=True)
+        merged_points.tofile(merged_path)
+        lidar_path = merged_path
+
+        # Get bounding boxes in reference LiDAR coordinate frame
+        ref_lidar_token = sample['data'][ref_lidar_name]
+        _, boxes, _ = trucks.get_sample_data(ref_lidar_token)
+
+        # Update cs_record and pose_record to use reference LiDAR
+        sd_rec = trucks.get('sample_data', ref_lidar_token)
+        cs_record = trucks.get('calibrated_sensor', sd_rec['calibrated_sensor_token'])
+        pose_record = trucks.get('ego_pose', sd_rec['ego_pose_token'])
 
         mmcv.check_file_exist(lidar_path)
 
@@ -199,63 +286,64 @@ def _fill_trainval_infos(nusc,
         l2e_r_mat = Quaternion(l2e_r).rotation_matrix
         e2g_r_mat = Quaternion(e2g_r).rotation_matrix
 
-        # obtain 6 image's information per frame
+        # obtain 4 image's information per frame
         camera_types = [
-            'CAM_FRONT',
-            'CAM_FRONT_RIGHT',
-            'CAM_FRONT_LEFT',
-            'CAM_BACK',
-            'CAM_BACK_LEFT',
-            'CAM_BACK_RIGHT',
+            'CAMERA_LEFT_FRONT',
+            'CAMERA_RIGHT_FRONT',
+            'CAMERA_LEFT_BACK',
+            'CAMERA_RIGHT_BACK'
         ]
         for cam in camera_types:
             cam_token = sample['data'][cam]
-            cam_path, _, cam_intrinsic = nusc.get_sample_data(cam_token)
-            cam_info = obtain_sensor2top(nusc, cam_token, l2e_t, l2e_r_mat,
+            cam_path, _, cam_intrinsic = trucks.get_sample_data(cam_token)
+            cam_info = obtain_sensor2top(trucks, cam_token, l2e_t, l2e_r_mat,
                                          e2g_t, e2g_r_mat, cam)
             cam_info.update(cam_intrinsic=cam_intrinsic)
             info['cams'].update({cam: cam_info})
 
-        radar_names = ['RADAR_FRONT', 'RADAR_FRONT_LEFT', 'RADAR_FRONT_RIGHT',  'RADAR_BACK_LEFT', 'RADAR_BACK_RIGHT']
+        radar_names = ['RADAR_RIGHT_FRONT', 'RADAR_RIGHT_SIDE', 'RADAR_RIGHT_BACK', 
+                       'RADAR_LEFT_FRONT', 'RADAR_LEFT_SIDE', 'RADAR_LEFT_BACK']
 
         for radar_name in radar_names:
             radar_token = sample['data'][radar_name]
-            radar_rec = nusc.get('sample_data', radar_token)
+            radar_rec = trucks.get('sample_data', radar_token)
             sweeps = []
 
             while len(sweeps) < max_radar_sweeps:
                 if not radar_rec['prev'] == '':
-                    radar_path, _, radar_intrin = nusc.get_sample_data(radar_token)
+                    radar_path, _, radar_intrin = trucks.get_sample_data(radar_token)
 
-                    radar_info = obtain_sensor2top(nusc, radar_token, l2e_t, l2e_r_mat,
+                    radar_info = obtain_sensor2top(trucks, radar_token, l2e_t, l2e_r_mat,
                                                 e2g_t, e2g_r_mat, radar_name)
                     sweeps.append(radar_info)
                     radar_token = radar_rec['prev']
-                    radar_rec = nusc.get('sample_data', radar_token)
+                    radar_rec = trucks.get('sample_data', radar_token)
                 else:
-                    radar_path, _, radar_intrin = nusc.get_sample_data(radar_token)
+                    radar_path, _, radar_intrin = trucks.get_sample_data(radar_token)
 
-                    radar_info = obtain_sensor2top(nusc, radar_token, l2e_t, l2e_r_mat,
+                    radar_info = obtain_sensor2top(trucks, radar_token, l2e_t, l2e_r_mat,
                                                 e2g_t, e2g_r_mat, radar_name)
                     sweeps.append(radar_info)
             
             info['radars'].update({radar_name: sweeps})
         # obtain sweeps for a single key-frame
-        sd_rec = nusc.get('sample_data', sample['data']['LIDAR_TOP'])
+        # Note: All spatial LiDARs are already merged in the main lidar_path
+        # So we only need temporal sweeps here
+        sd_rec = trucks.get('sample_data', sample['data']['LIDAR_TOP_FRONT'])
         sweeps = []
         while len(sweeps) < max_sweeps:
             if not sd_rec['prev'] == '':
-                sweep = obtain_sensor2top(nusc, sd_rec['prev'], l2e_t,
+                sweep = obtain_sensor2top(trucks, sd_rec['prev'], l2e_t,
                                           l2e_r_mat, e2g_t, e2g_r_mat, 'lidar')
                 sweeps.append(sweep)
-                sd_rec = nusc.get('sample_data', sd_rec['prev'])
+                sd_rec = trucks.get('sample_data', sd_rec['prev'])
             else:
                 break
         info['sweeps'] = sweeps
         # obtain annotation
         if not test:
             annotations = [
-                nusc.get('sample_annotation', token)
+                trucks.get('sample_annotation', token)
                 for token in sample['anns']
             ]
             locs = np.array([b.center for b in boxes]).reshape(-1, 3)
@@ -263,7 +351,7 @@ def _fill_trainval_infos(nusc,
             rots = np.array([b.orientation.yaw_pitch_roll[0]
                              for b in boxes]).reshape(-1, 1)
             velocity = np.array(
-                [nusc.box_velocity(token)[:2] for token in sample['anns']])
+                [trucks.box_velocity(token)[:2] for token in sample['anns']])
             valid_flag = np.array(
                 [(anno['num_lidar_pts'] + anno['num_radar_pts']) > 0
                  for anno in annotations],
@@ -277,8 +365,8 @@ def _fill_trainval_infos(nusc,
 
             names = [b.name for b in boxes]
             for i in range(len(names)):
-                if names[i] in NuScenesDataset.NameMapping:
-                    names[i] = NuScenesDataset.NameMapping[names[i]]
+                if names[i] in MANTruckScenesDataset.NameMapping:
+                    names[i] = MANTruckScenesDataset.NameMapping[names[i]]
             names = np.array(names)
             # we need to convert rot to SECOND format.
             gt_boxes = np.concatenate([locs, dims, -rots - np.pi / 2], axis=1)
@@ -294,13 +382,13 @@ def _fill_trainval_infos(nusc,
             info['valid_flag'] = valid_flag
 
         if sample['scene_token'] in train_scenes:
-            train_nusc_infos.append(info)
-            token2idx[info['token']] = ('train', len(train_nusc_infos) - 1)
+            train_trucks_infos.append(info)
+            token2idx[info['token']] = ('train', len(train_trucks_infos) - 1)
         else:
-            val_nusc_infos.append(info)
-            token2idx[info['token']] = ('val', len(val_nusc_infos) - 1)
+            val_trucks_infos.append(info)
+            token2idx[info['token']] = ('val', len(val_trucks_infos) - 1)
     
-    for info in train_nusc_infos:
+    for info in train_trucks_infos:
         prev_token = info['prev_token']
         if prev_token == '':
             info['prev'] = -1
@@ -309,7 +397,7 @@ def _fill_trainval_infos(nusc,
             assert prev_set == 'train'
             info['prev'] = prev_idx
 
-    for info in val_nusc_infos:
+    for info in val_trucks_infos:
         prev_token = info['prev_token']
         if prev_token == '':
             info['prev'] = -1
@@ -318,10 +406,10 @@ def _fill_trainval_infos(nusc,
             assert prev_set == 'val'
             info['prev'] = prev_idx
 
-    return train_nusc_infos, val_nusc_infos
+    return train_trucks_infos, val_trucks_infos
 
 
-def obtain_sensor2top(nusc,
+def obtain_sensor2top(trucks,
                       sensor_token,
                       l2e_t,
                       l2e_r_mat,
@@ -343,11 +431,11 @@ def obtain_sensor2top(nusc,
     Returns:
         sweep (dict): Sweep information after transformation.
     """
-    sd_rec = nusc.get('sample_data', sensor_token)
-    cs_record = nusc.get('calibrated_sensor',
+    sd_rec = trucks.get('sample_data', sensor_token)
+    cs_record = trucks.get('calibrated_sensor',
                          sd_rec['calibrated_sensor_token'])
-    pose_record = nusc.get('ego_pose', sd_rec['ego_pose_token'])
-    data_path = str(nusc.get_sample_data_path(sd_rec['token']))
+    pose_record = trucks.get('ego_pose', sd_rec['ego_pose_token'])
+    data_path = str(trucks.get_sample_data_path(sd_rec['token']))
     if os.getcwd() in data_path:  # path from lyftdataset is absolute path
         data_path = data_path.split(f'{os.getcwd()}/')[-1]  # relative path
     sweep = {
@@ -389,35 +477,33 @@ def export_2d_annotation(root_path, info_path, version, mono3d=True):
         mono3d (bool): Whether to export mono3d annotation. Default: True.
     """
     # get bbox annotations for camera
-    camera_types = [
-        'CAM_FRONT',
-        'CAM_FRONT_RIGHT',
-        'CAM_FRONT_LEFT',
-        'CAM_BACK',
-        'CAM_BACK_LEFT',
-        'CAM_BACK_RIGHT',
-    ]
-    nusc_infos = mmcv.load(info_path)['infos']
-    nusc = NuScenes(version=version, dataroot=root_path, verbose=True)
+    camera_types =[
+            'CAMERA_LEFT_FRONT',
+            'CAMERA_RIGHT_FRONT',
+            'CAMERA_LEFT_BACK',
+            'CAMERA_RIGHT_BACK'
+        ]
+    trucks_infos = mmcv.load(info_path)['infos']
+    trucks = TruckScenes(version=version, dataroot=root_path, verbose=True)
     # info_2d_list = []
     cat2Ids = [
-        dict(id=nus_categories.index(cat_name), name=cat_name)
-        for cat_name in nus_categories
+        dict(id=truck_categories.index(cat_name), name=cat_name)
+        for cat_name in truck_categories
     ]
     coco_ann_id = 0
     coco_2d_dict = dict(annotations=[], images=[], categories=cat2Ids)
-    for info in mmcv.track_iter_progress(nusc_infos):
+    for info in mmcv.track_iter_progress(trucks_infos):
         for cam in camera_types:
             cam_info = info['cams'][cam]
             coco_infos = get_2d_boxes(
-                nusc,
+                trucks,
                 cam_info['sample_data_token'],
                 visibilities=['', '1', '2', '3', '4'],
                 mono3d=mono3d)
             (height, width, _) = mmcv.imread(cam_info['data_path']).shape
             coco_2d_dict['images'].append(
                 dict(
-                    file_name=cam_info['data_path'].split('data/nuscenes/')
+                    file_name=cam_info['data_path'].split('data/man-truckscenes/')
                     [-1],
                     id=cam_info['sample_data_token'],
                     token=info['token'],
@@ -443,7 +529,7 @@ def export_2d_annotation(root_path, info_path, version, mono3d=True):
     mmcv.dump(coco_2d_dict, f'{json_prefix}.coco.json')
 
 
-def get_2d_boxes(nusc,
+def get_2d_boxes(trucks,
                  sample_data_token: str,
                  visibilities: List[str],
                  mono3d=True):
@@ -459,7 +545,7 @@ def get_2d_boxes(nusc,
     """
 
     # Get the sample data and the sample corresponding to that sample data.
-    sd_rec = nusc.get('sample_data', sample_data_token)
+    sd_rec = trucks.get('sample_data', sample_data_token)
 
     assert sd_rec[
         'sensor_modality'] == 'camera', 'Error: get_2d_boxes only works' \
@@ -468,17 +554,17 @@ def get_2d_boxes(nusc,
         raise ValueError(
             'The 2D re-projections are available only for keyframes.')
 
-    s_rec = nusc.get('sample', sd_rec['sample_token'])
+    s_rec = trucks.get('sample', sd_rec['sample_token'])
 
     # Get the calibrated sensor and ego pose
     # record to get the transformation matrices.
-    cs_rec = nusc.get('calibrated_sensor', sd_rec['calibrated_sensor_token'])
-    pose_rec = nusc.get('ego_pose', sd_rec['ego_pose_token'])
+    cs_rec = trucks.get('calibrated_sensor', sd_rec['calibrated_sensor_token'])
+    pose_rec = trucks.get('ego_pose', sd_rec['ego_pose_token'])
     camera_intrinsic = np.array(cs_rec['camera_intrinsic'])
 
     # Get all the annotation with the specified visibilties.
     ann_recs = [
-        nusc.get('sample_annotation', token) for token in s_rec['anns']
+        trucks.get('sample_annotation', token) for token in s_rec['anns']
     ]
     ann_recs = [
         ann_rec for ann_rec in ann_recs
@@ -493,7 +579,7 @@ def get_2d_boxes(nusc,
         ann_rec['sample_data_token'] = sample_data_token
 
         # Get the box in global coordinates.
-        box = nusc.get_box(ann_rec['token'])
+        box = trucks.get_box(ann_rec['token'])
 
         # Move them to the ego-pose frame.
         box.translate(-np.array(pose_rec['translation']))
@@ -533,7 +619,7 @@ def get_2d_boxes(nusc,
             dim = box.wlh.tolist()
             rot = [box.orientation.yaw_pitch_roll[0]]
 
-            global_velo2d = nusc.box_velocity(box.token)[:2]
+            global_velo2d = trucks.box_velocity(box.token)[:2]
             global_velo3d = np.array([*global_velo2d, 0.0])
             e2g_r_mat = Quaternion(pose_rec['rotation']).rotation_matrix
             c2e_r_mat = Quaternion(cs_rec['rotation']).rotation_matrix
@@ -553,13 +639,13 @@ def get_2d_boxes(nusc,
             if repro_rec['center2d'][2] <= 0:
                 continue
 
-            ann_token = nusc.get('sample_annotation',
+            ann_token = trucks.get('sample_annotation',
                                  box.token)['attribute_tokens']
             if len(ann_token) == 0:
                 attr_name = 'None'
             else:
-                attr_name = nusc.get('attribute', ann_token[0])['name']
-            attr_id = nus_attributes.index(attr_name)
+                attr_name = trucks.get('attribute', ann_token[0])['name']
+            attr_id = truck_attributes.index(attr_name)
             repro_rec['attribute_name'] = attr_name
             repro_rec['attribute_id'] = attr_id
 
@@ -650,11 +736,11 @@ def generate_record(ann_rec: dict, x1: float, y1: float, x2: float, y2: float,
     coco_rec['image_id'] = sample_data_token
     coco_rec['area'] = (y2 - y1) * (x2 - x1)
 
-    if repro_rec['category_name'] not in NuScenesDataset.NameMapping:
+    if repro_rec['category_name'] not in MANTruckScenesDataset.NameMapping:
         return None
-    cat_name = NuScenesDataset.NameMapping[repro_rec['category_name']]
+    cat_name = MANTruckScenesDataset.NameMapping[repro_rec['category_name']]
     coco_rec['category_name'] = cat_name
-    coco_rec['category_id'] = nus_categories.index(cat_name)
+    coco_rec['category_id'] = truck_categories.index(cat_name)
     coco_rec['bbox'] = [x1, y1, x2 - x1, y2 - y1]
     coco_rec['iscrowd'] = 0
 
@@ -662,4 +748,4 @@ def generate_record(ann_rec: dict, x1: float, y1: float, x2: float, y2: float,
 
 
 if __name__ == '__main__':
-    create_nuscenes_infos('data/nuscenes/', 'radar_nuscenes_5sweeps')
+    create_mantruck_infos('data/man-truckscenes/', 'radar_mantruck_5sweeps')

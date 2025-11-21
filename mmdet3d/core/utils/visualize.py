@@ -27,6 +27,10 @@ OBJECT_PALETTE = {
     "vehicle": (255, 158, 0),    # Same as car
     "cyclist": (220, 20, 60),    # Same as bicycle
     "sign": (47, 79, 79),        # Same as traffic_cone
+    "animal":(255,255,255), # white
+    "trafficcone": (47, 79, 79), # 약간 퍼런색
+    "traffic_sign": (47, 79, 79), # 약간 퍼런색
+    "other_vehicle":(255,240,245)
 }
 
 MAP_PALETTE = {
@@ -219,6 +223,7 @@ def visualize_lidar(
     color: Optional[Tuple[int, int, int]] = None,
     radius: float = 15,
     thickness: float = 25,
+    swap_xy: bool = False,
 ) -> None:
     fig = plt.figure(figsize=(xlim[1] - xlim[0], ylim[1] - ylim[0]))
 
@@ -229,25 +234,42 @@ def visualize_lidar(
     ax.set_axis_off()
 
     if lidar is not None:
-        plt.scatter(
-            lidar[:, 0],
-            lidar[:, 1],
-            s=radius,
-            c="white",
-        )
+        if swap_xy:
+            # Swap X and Y for different coordinate systems (e.g., mantruck)
+            plt.scatter(
+                lidar[:, 1],  # Y as X (left-right becomes forward-back)
+                lidar[:, 0],  # X as Y (forward-back becomes left-right)
+                s=radius,
+                c="white",
+            )
+        else:
+            plt.scatter(
+                lidar[:, 0],
+                lidar[:, 1],
+                s=radius,
+                c="white",
+            )
 
     if bboxes is not None and len(bboxes) > 0:
         coords = bboxes.corners[:, [0, 3, 7, 4, 0], :2]
 
-
         for index in range(coords.shape[0]):
             name = classes[labels[index]]
-            plt.plot(
-                coords[index, :, 0],
-                coords[index, :, 1],
-                linewidth=thickness,
-                color=np.array(color or OBJECT_PALETTE[name]) / 255,
-            )
+            if swap_xy:
+                # Swap X and Y for bbox corners too
+                plt.plot(
+                    coords[index, :, 1],  # Y as X
+                    coords[index, :, 0],  # X as Y
+                    linewidth=thickness,
+                    color=np.array(color or OBJECT_PALETTE[name]) / 255,
+                )
+            else:
+                plt.plot(
+                    coords[index, :, 0],
+                    coords[index, :, 1],
+                    linewidth=thickness,
+                    color=np.array(color or OBJECT_PALETTE[name]) / 255,
+                )
 
     mmcv.mkdir_or_exist(os.path.dirname(fpath))
     fig.savefig(
@@ -393,17 +415,25 @@ def create_collage(
         total_images = len(images)
 
         if total_images == 7:
-            # 6 cameras + LiDAR
+            # 6 cameras + LiDAR (Waymo)
             lidar_idx = 6
             num_cameras = 6
+            is_mantruck = False
         elif total_images == 6:
             # 5 cameras + LiDAR (no CAM_BACK)
             lidar_idx = 5
             num_cameras = 5
+            is_mantruck = False
+        elif total_images == 5:
+            # 4 cameras + LiDAR (mantruck: LEFT_FRONT, RIGHT_FRONT, LEFT_BACK, RIGHT_BACK)
+            lidar_idx = 4
+            num_cameras = 4
+            is_mantruck = True
         else:
             # Fallback
             lidar_idx = total_images - 1
             num_cameras = total_images - 1
+            is_mantruck = False
 
         if lidar_idx < len(images):
             # Keep original LiDAR image aspect ratio
@@ -436,21 +466,28 @@ def create_collage(
         else:
             lidar_resized = np.zeros((lidar_area_height, lidar_area_width, 3), dtype=np.uint8)
 
-        # Camera grid (2x3) on the right side
-        # grid_map: camera index mapping to grid position
-        grid_map = [[1, 0, 3],   # FRONT_LEFT, FRONT, FRONT_RIGHT
-                    [2, 5, 4]]   # SIDE_LEFT, BACK, SIDE_RIGHT
+        # Camera grid on the right side
+        if is_mantruck:
+            # mantruck: 2x2 grid (LEFT_FRONT, RIGHT_FRONT, LEFT_BACK, RIGHT_BACK)
+            grid_map = [[0, 1],   # LEFT_FRONT, RIGHT_FRONT
+                        [2, 3]]   # LEFT_BACK, RIGHT_BACK
+            num_cols = 2
+        else:
+            # Waymo: 2x3 grid
+            grid_map = [[1, 0, 3],   # FRONT_LEFT, FRONT, FRONT_RIGHT
+                        [2, 5, 4]]   # SIDE_LEFT, BACK, SIDE_RIGHT
+            num_cols = 3
 
         camera_rows = []
         for i in range(2):  # 2 rows
             row_images = []
-            for j in range(3):  # 3 cols
+            for j in range(num_cols):
                 k = grid_map[i][j]
                 # If we only have 5 cameras (no CAM_BACK), k=5 position should be black
                 if k < num_cameras and k < len(resized_images):
                     row_images.append(resized_images[k])
                 else:
-                    # Fill with black for missing cameras (e.g., CAM_BACK when only 5 cameras)
+                    # Fill with black for missing cameras
                     row_images.append(np.zeros((target_size[1], target_size[0], 3), dtype=np.uint8))
             camera_rows.append(np.hstack(row_images))
 
@@ -518,17 +555,33 @@ def create_collage(
     #                 y = i * target_size[1] + 30
     #                 cv2.putText(collage, camera_labels[idx], (x, y), font, font_scale, color, thickness)
     elif layout == "lidar_left":
-        grid_map = [[1, 0, 3],   # 1행: FRONT_LEFT, FRONT, FRONT_RIGHT
-            [2, 5, 4]]   # 2행: SIDE_LEFT, BACK, SIDE_RIGHT
+        # LiDAR label
         cv2.putText(collage, "LiDAR", (10, 30), font, font_scale, color, thickness)
+
         lidar_width = target_size[0] * 2  # Width of LiDAR section
-        for i in range(2):
-            for j in range(3):
-                old_idx = grid_map[i][j]
-                x = lidar_width + j * target_size[0] + 10
-                y = i * target_size[1] + 30
-                cv2.putText(collage, camera_labels[old_idx], (x, y), font, font_scale, color, thickness)
-                # 이미지도 camera_images[old_idx]로 배치
+
+        if is_mantruck:
+            # mantruck camera labels: 2x2 grid
+            mantruck_labels = [
+                ["LEFT_FRONT", "RIGHT_FRONT"],  # Row 0
+                ["LEFT_BACK", "RIGHT_BACK"]     # Row 1
+            ]
+            for i in range(2):
+                for j in range(2):
+                    x = lidar_width + j * target_size[0] + 10
+                    y = i * target_size[1] + 30
+                    cv2.putText(collage, mantruck_labels[i][j], (x, y), font, font_scale, color, thickness)
+        else:
+            # Waymo camera labels: 2x3 grid
+            grid_map = [[1, 0, 3],   # FRONT_LEFT, FRONT, FRONT_RIGHT
+                        [2, 5, 4]]   # SIDE_LEFT, BACK, SIDE_RIGHT
+            for i in range(2):
+                for j in range(3):
+                    old_idx = grid_map[i][j]
+                    if old_idx < len(camera_labels):
+                        x = lidar_width + j * target_size[0] + 10
+                        y = i * target_size[1] + 30
+                        cv2.putText(collage, camera_labels[old_idx], (x, y), font, font_scale, color, thickness)
     # Save collage
     mmcv.mkdir_or_exist(os.path.dirname(fpath))
     cv2.imwrite(fpath, collage)

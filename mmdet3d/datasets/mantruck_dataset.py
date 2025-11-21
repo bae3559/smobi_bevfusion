@@ -6,7 +6,7 @@ import mmcv
 import numpy as np
 import pyquaternion
 import torch
-from nuscenes.utils.data_classes import Box as NuScenesBox
+from truckscenes.utils.data_classes import Box as TruckScenesBox
 from pyquaternion import Quaternion
 
 from mmdet.datasets import DATASETS
@@ -16,7 +16,7 @@ from .custom_3d import Custom3DDataset
 
 
 @DATASETS.register_module()
-class NuScenesDataset(Custom3DDataset):
+class MANTruckScenesDataset(Custom3DDataset):
     r"""NuScenes Dataset.
 
     This class serves as the API for experiments on the NuScenes Dataset.
@@ -49,25 +49,28 @@ class NuScenesDataset(Custom3DDataset):
         test_mode (bool, optional): Whether the dataset is in test mode.
             Defaults to False.
         eval_version (bool, optional): Configuration version of evaluation.
-            Defaults to  'detection_cvpr_2019'.
+            Defaults to  'detection_cvpr_2024'.
         use_valid_flag (bool): Whether to use `use_valid_flag` key in the info
             file as mask to filter gt_boxes and gt_names. Defaults to False.
     """
     NameMapping = {
-        "movable_object.barrier": "barrier",
-        "vehicle.bicycle": "bicycle",
-        "vehicle.bus.bendy": "bus",
-        "vehicle.bus.rigid": "bus",
-        "vehicle.car": "car",
-        "vehicle.construction": "construction_vehicle",
-        "vehicle.motorcycle": "motorcycle",
-        "human.pedestrian.adult": "pedestrian",
-        "human.pedestrian.child": "pedestrian",
+        "human.pedestrian.adult":"pedestrian",
+        "human.pedestrian.child":"pedestrian",
         "human.pedestrian.construction_worker": "pedestrian",
-        "human.pedestrian.police_officer": "pedestrian",
-        "movable_object.trafficcone": "traffic_cone",
-        "vehicle.trailer": "trailer",
-        "vehicle.truck": "truck",
+        "human.pedestrian.stroller": "pedestrian",
+        "movable_object.barrier": "barrier",
+        "movable_object.trafficcone": "traffic_cone",        
+        "static_object.traffic_sign": "traffic_sign",
+        "vehicle.bicycle" :"bicycle",
+        "vehicle.bus.rigid": "bus",
+        "vehicle.car" :"car",
+        "vehicle.construction": "trailer",
+        "vehicle.ego_trailer" :"trailer",
+        "vehicle.motorcycle": "motorcycle",
+        "vehicle.other": "other_vehicle",
+        "vehicle.trailer" : "trailer",
+        "vehicle.train": "other_vehicle",
+        "vehicle.truck" :"truck"
     }
     DefaultAttribute = {
         "car": "vehicle.parked",
@@ -80,6 +83,9 @@ class NuScenesDataset(Custom3DDataset):
         "bicycle": "cycle.without_rider",
         "barrier": "",
         "traffic_cone": "",
+        "animal" : "",
+        "traffic_sign":"",
+        "other_vehicle":"",
     }
     AttrMapping = {
         "cycle.with_rider": 0,
@@ -109,18 +115,45 @@ class NuScenesDataset(Custom3DDataset):
         "vel_err": "mAVE",
         "attr_err": "mAAE",
     }
-    #mantruck dataset
-    CLASSES = (
+    #nuscenes dataset
+    # CLASSES = (
+    #     "car",
+    #     "truck",
+    #     "trailer",
+    #     "bus",
+    #     "construction_vehicle",
+    #     "bicycle",
+    #     "motorcycle",
+    #     "pedestrian",
+    #     "traffic_cone",
+    #     "barrier",
+    # )
+    #mantruckdataset
+    CLASSES = ( 
         "car",
-        "truck",
-        "trailer",
-        "bus",
-        "construction_vehicle",
-        "bicycle",
-        "motorcycle",
+        "traffic_sign", 
         "pedestrian",
-        "traffic_cone",
-        "barrier",
+        "truck", 
+        "trailer", 
+        "traffic_cone", 
+        "other_vehicle", 
+        "bus", 
+        # "train", 
+        "bicycle", 
+        "barrier", 
+        "motorcycle", 
+        # "pushable_pullable", 
+        # "construction_vehicle",
+        "animal", 
+        # "ambulance",
+        # "bicycle_rack", 
+        # "debris",
+        # "personal_mobility", 
+        # "police", 
+        # "stroller", 
+        # "polic_officer",
+        # "bus_bendy", 
+        # "wheelchair"
     )
 
     def __init__(
@@ -136,7 +169,7 @@ class NuScenesDataset(Custom3DDataset):
         box_type_3d="LiDAR",
         filter_empty_gt=True,
         test_mode=False,
-        eval_version="detection_cvpr_2019",
+        eval_version="detection_cvpr_2024",
         use_valid_flag=False,
     ) -> None:
         self.load_interval = load_interval
@@ -155,7 +188,7 @@ class NuScenesDataset(Custom3DDataset):
 
         self.with_velocity = with_velocity
         self.eval_version = eval_version
-        from nuscenes.eval.detection.config import config_factory
+        from truckscenes.eval.detection.config import config_factory
 
         self.eval_detection_configs = config_factory(self.eval_version)
         if self.modality is None:
@@ -222,7 +255,8 @@ class NuScenesDataset(Custom3DDataset):
 
         if data['location'] is None:
             data.pop('location')
-        if data['radar'] is None:
+        # Always remove radar for MAN-TruckScenes (not compatible with NuScenes radar format)
+        if 'radar' in data:
             data.pop('radar')
 
         # ego to global transform
@@ -325,7 +359,7 @@ class NuScenesDataset(Custom3DDataset):
         # the same as KITTI (0.5, 0.5, 0)
         # haotian: this is an important change: from 0.5, 0.5, 0.5 -> 0.5, 0.5, 0
         gt_bboxes_3d = LiDARInstance3DBoxes(
-            gt_bboxes_3d, box_dim=gt_bboxes_3d.shape[-1], origin=(0.5, 0.5, 0)
+            gt_bboxes_3d, box_dim=gt_bboxes_3d.shape[-1], origin=(0.5, 0.5, 0.5)
         ).convert_to(self.box_mode_3d)
 
         anns_results = dict(
@@ -347,15 +381,15 @@ class NuScenesDataset(Custom3DDataset):
         Returns:
             str: Path of the output json file.
         """
-        nusc_annos = {}
+        trucks_annos = {}
         mapped_class_names = self.CLASSES
 
         print("Start to convert detection format...")
         for sample_id, det in enumerate(mmcv.track_iter_progress(results)):
             annos = []
-            boxes = output_to_nusc_box(det)
+            boxes = output_to_trucks_box(det)
             sample_token = self.data_infos[sample_id]["token"]
-            boxes = lidar_nusc_box_to_global(
+            boxes = lidar_trucks_box_to_global(
                 self.data_infos[sample_id],
                 boxes,
                 mapped_class_names,
@@ -376,16 +410,16 @@ class NuScenesDataset(Custom3DDataset):
                     elif name in ["bicycle", "motorcycle"]:
                         attr = "cycle.with_rider"
                     else:
-                        attr = NuScenesDataset.DefaultAttribute[name]
+                        attr = MANTruckScenesDataset.DefaultAttribute[name]
                 else:
                     if name in ["pedestrian"]:
                         attr = "pedestrian.standing"
                     elif name in ["bus"]:
                         attr = "vehicle.stopped"
                     else:
-                        attr = NuScenesDataset.DefaultAttribute[name]
+                        attr = MANTruckScenesDataset.DefaultAttribute[name]
 
-                nusc_anno = dict(
+                trucks_anno = dict(
                     sample_token=sample_token,
                     translation=box.center.tolist(),
                     size=box.wlh.tolist(),
@@ -395,17 +429,17 @@ class NuScenesDataset(Custom3DDataset):
                     detection_score=box.score,
                     attribute_name=attr,
                 )
-                annos.append(nusc_anno)
-            nusc_annos[sample_token] = annos
-        nusc_submissions = {
+                annos.append(trucks_anno)
+            trucks_anno[sample_token] = annos
+        trucks_submissions = {
             "meta": self.modality,
-            "results": nusc_annos,
+            "results": trucks_annos,
         }
 
         mmcv.mkdir_or_exist(jsonfile_prefix)
-        res_path = osp.join(jsonfile_prefix, "results_nusc.json")
+        res_path = osp.join(jsonfile_prefix, "results_trucks.json")
         print("Results writes to", res_path)
-        mmcv.dump(nusc_submissions, res_path)
+        mmcv.dump(trucks_submissions, res_path)
         return res_path
 
     def _evaluate_single(
@@ -428,41 +462,69 @@ class NuScenesDataset(Custom3DDataset):
         Returns:
             dict: Dictionary of evaluation details.
         """
-        from nuscenes import NuScenes
-        from nuscenes.eval.detection.evaluate import DetectionEval
+        from truckscenes.truckscenes import TruckScenes
+        from truckscenes.eval.detection.evaluate import DetectionEval
 
         output_dir = osp.join(*osp.split(result_path)[:-1])
-        nusc = NuScenes(version=self.version, dataroot=self.dataset_root, verbose=False)
+        trucks = TruckScenes(version=self.version, dataroot=self.dataset_root, verbose=False)
         eval_set_map = {
             "v1.0-mini": "mini_val",
             "v1.0-trainval": "val",
         }
-        nusc_eval = DetectionEval(
-            nusc,
+        trucks_eval = DetectionEval(
+            trucks,
             config=self.eval_detection_configs,
             result_path=result_path,
             eval_set=eval_set_map[self.version],
             output_dir=output_dir,
             verbose=False,
         )
-        nusc_eval.main(render_curves=False)
+        trucks_eval.main(render_curves=False)
 
         # record metrics
         metrics = mmcv.load(osp.join(output_dir, "metrics_summary.json"))
         detail = dict()
-        for name in self.CLASSES:
-            for k, v in metrics["label_aps"][name].items():
-                val = float("{:.4f}".format(v))
-                detail["object/{}_ap_dist_{}".format(name, k)] = val
-            for k, v in metrics["label_tp_errors"][name].items():
-                val = float("{:.4f}".format(v))
-                detail["object/{}_{}".format(name, k)] = val
-            for k, v in metrics["tp_errors"].items():
-                val = float("{:.4f}".format(v))
-                detail["object/{}".format(self.ErrNameMapping[k])] = val
+        # for name in self.CLASSES:
+        #     for k, v in metrics["all"]['mean_dist_aps'][name].items():
+        #         val = float("{:.4f}".format(v))
+        #         detail["object/{}_ap_dist_{}".format(name, k)] = val
+        #     for k, v in metrics['all']['label_tp_errors'][name].items():
+        #         val = float("{:.4f}".format(v))
+        #         detail["object/{}_{}".format(name, k)] = val
+        #     for k, v in metrics["tp_errors"].items():
+        #         val = float("{:.4f}".format(v))
+        #         detail["object/{}".format(self.ErrNameMapping[k])] = val
 
-        detail["object/nds"] = metrics["nd_score"]
-        detail["object/map"] = metrics["mean_ap"]
+        # detail["object/nds"] = metrics["nd_score"]
+        # detail["object/map"] = metrics["mean_ap"]
+
+        all_metrics = metrics["all"]  # 편하게 별칭
+
+        for name in self.CLASSES:
+            # 1) per-class AP (TruckScenes는 mean_dist_aps에 "클래스별 평균 AP"가 들어 있음)
+            if "mean_dist_aps" in all_metrics and name in all_metrics["mean_dist_aps"]:
+                v = all_metrics["mean_dist_aps"][name]
+                val = float(f"{v:.4f}")
+                # 이름은 네가 원하는 대로: dist 구분 없으니까 suffix는 그냥 _ap 정도로
+                detail[f"object/{name}_ap"] = val
+
+            # 2) per-class TP errors (trans_err, scale_err, orient_err, vel_err, attr_err)
+            if "label_tp_errors" in all_metrics and name in all_metrics["label_tp_errors"]:
+                for k, v in all_metrics["label_tp_errors"][name].items():
+                    val = float(f"{v:.4f}")
+                    detail[f"object/{name}_{k}"] = val
+
+        # 3) 전체 TP errors (mATE, mASE, ...)
+        if "tp_errors" in all_metrics:
+            for k, v in all_metrics["tp_errors"].items():
+                val = float(f"{v:.4f}")
+                # ErrNameMapping: trans_err -> mATE 같은 거 매핑
+                pretty_name = self.ErrNameMapping.get(k, k)
+                detail[f"object/{pretty_name}"] = val
+
+        # 4) 전체 NDS / mAP
+        detail["object/nds"] = float(f"{all_metrics['nd_score']:.4f}")
+        detail["object/map"] = float(f"{all_metrics['mean_ap']:.4f}")
         return detail
 
     def format_results(self, results, jsonfile_prefix=None):
@@ -573,7 +635,7 @@ class NuScenesDataset(Custom3DDataset):
         return metrics
 
 
-def output_to_nusc_box(detection):
+def output_to_trucks_box(detection):
     """Convert the output to the box class in the nuScenes.
 
     Args:
@@ -605,7 +667,7 @@ def output_to_nusc_box(detection):
         # velo_ori = box3d[i, 6]
         # velocity = (
         # velo_val * np.cos(velo_ori), velo_val * np.sin(velo_ori), 0.0)
-        box = NuScenesBox(
+        box = TruckScenesBox(
             box_gravity_center[i],
             box_dims[i],
             quat,
@@ -617,8 +679,8 @@ def output_to_nusc_box(detection):
     return box_list
 
 
-def lidar_nusc_box_to_global(
-    info, boxes, classes, eval_configs, eval_version="detection_cvpr_2019"
+def lidar_trucks_box_to_global(
+    info, boxes, classes, eval_configs, eval_version="detection_cvpr_2024"
 ):
     """Convert the box from ego to global coordinate.
 
@@ -644,6 +706,8 @@ def lidar_nusc_box_to_global(
         # filter det in ego.
         cls_range_map = eval_configs.class_range
         radius = np.linalg.norm(box.center[:2], 2)
+        print(classes[box.label], box.label)
+        
         det_range = cls_range_map[classes[box.label]]
         if radius > det_range:
             continue

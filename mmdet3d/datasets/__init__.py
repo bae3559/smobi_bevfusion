@@ -4,5 +4,6 @@ from .builder import *
 from .custom_3d import *
 from .nuscenes_dataset import *
 from .waymo_dataset import *
+from .mantruck_dataset import *
 from .pipelines import *
 from .utils import *

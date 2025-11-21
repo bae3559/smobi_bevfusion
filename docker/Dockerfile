@@ -30,6 +30,7 @@ RUN pip install tqdm
 RUN pip install torchpack
 RUN pip install mmdet==2.20.0
 RUN pip install nuscenes-devkit
+RUN pip install truckscenes-devkit
 RUN pip install mpi4py==3.0.3
 RUN pip install numba==0.48.0
 RUN pip install mmcv-full==1.4.0 -f https://download.openmmlab.com/mmcv/dist/cu113/torch1.10.0/index.html
