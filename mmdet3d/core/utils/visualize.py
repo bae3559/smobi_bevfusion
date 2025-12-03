@@ -118,6 +118,8 @@ def visualize_camera(
             for index in range(coords.shape[0]):
                 name = classes[labels[index]]
                 # print(f"  Drawing box {index} for class '{name}'")
+
+                # Draw bbox edges
                 for start, end in [
                     (0, 1),
                     (0, 3),
@@ -140,6 +142,24 @@ def visualize_camera(
                         thickness,
                         cv2.LINE_AA,
                     )
+
+                # Draw heading line (like truckscenes render_box)
+                # coords has 8 corners projected to 2D
+                # BEVFusion corner indices:
+                # (x0y0z0, x0y0z1, x0y1z1, x0y1z0, x1y0z0, x1y0z1, x1y1z1, x1y1z0)
+                # Outline drawn as: [0, 3, 7, 4, 0]
+                # Front face is 0-4 edge
+                center_bottom = coords[index, [0, 3, 4, 7]].mean(axis=0).astype(np.int32)
+                center_bottom_forward = coords[index, [0, 4]].mean(axis=0).astype(np.int32)
+
+                cv2.line(
+                    canvas,
+                    tuple(center_bottom),
+                    tuple(center_bottom_forward),
+                    (0, 255, 255),  # Yellow line (BGR format)
+                    thickness=max(3, thickness // 2),
+                    lineType=cv2.LINE_AA
+                )
             canvas = canvas.astype(np.uint8)
         canvas = cv2.cvtColor(canvas, cv2.COLOR_BGR2RGB)
 
@@ -181,6 +201,8 @@ def visualize_camera(
             for index in range(coords.shape[0]):
                 name = classes[labels[index]]
                 # print(f"  Drawing box {index} for class '{name}'")
+
+                # Draw bbox edges
                 for start, end in [
                     (0, 1),
                     (0, 3),
@@ -203,6 +225,24 @@ def visualize_camera(
                         thickness,
                         cv2.LINE_AA,
                     )
+
+                # Draw heading line (like truckscenes render_box)
+                # coords has 8 corners projected to 2D
+                # BEVFusion corner indices:
+                # (x0y0z0, x0y0z1, x0y1z1, x0y1z0, x1y0z0, x1y0z1, x1y1z1, x1y1z0)
+                # Outline drawn as: [0, 3, 7, 4, 0]
+                # Front face is 0-4 edge
+                center_bottom = coords[index, [0, 3, 4, 7]].mean(axis=0).astype(np.int32)
+                center_bottom_forward = coords[index, [0, 4]].mean(axis=0).astype(np.int32)
+
+                cv2.line(
+                    canvas,
+                    tuple(center_bottom),
+                    tuple(center_bottom_forward),
+                    (0, 255, 255),  # Yellow line (BGR format)
+                    thickness=max(3, thickness // 2),
+                    lineType=cv2.LINE_AA
+                )
             canvas = canvas.astype(np.uint8)
         canvas = cv2.cvtColor(canvas, cv2.COLOR_BGR2RGB)
 
@@ -224,7 +264,11 @@ def visualize_lidar(
     radius: float = 15,
     thickness: float = 25,
     swap_xy: bool = False,
+    flip_y: bool = False,
 ) -> None:
+    if flip_y:
+        print(f"[DEBUG visualize_lidar] flip_y=True, flipping Y axis")
+
     fig = plt.figure(figsize=(xlim[1] - xlim[0], ylim[1] - ylim[0]))
 
     ax = plt.gca()
@@ -234,18 +278,24 @@ def visualize_lidar(
     ax.set_axis_off()
 
     if lidar is not None:
+        lidar_viz = lidar.copy()
+        if flip_y:
+            print(f"[DEBUG] Before flip Y range: [{lidar_viz[:, 1].min():.2f}, {lidar_viz[:, 1].max():.2f}]")
+            lidar_viz[:, 1] = -lidar_viz[:, 1]
+            print(f"[DEBUG] After flip Y range: [{lidar_viz[:, 1].min():.2f}, {lidar_viz[:, 1].max():.2f}]")
+
         if swap_xy:
             # Swap X and Y for different coordinate systems (e.g., mantruck)
             plt.scatter(
-                lidar[:, 1],  # Y as X (left-right becomes forward-back)
-                lidar[:, 0],  # X as Y (forward-back becomes left-right)
+                lidar_viz[:, 1],  # Y as X (left-right becomes forward-back)
+                lidar_viz[:, 0],  # X as Y (forward-back becomes left-right)
                 s=radius,
                 c="white",
             )
         else:
             plt.scatter(
-                lidar[:, 0],
-                lidar[:, 1],
+                lidar_viz[:, 0],
+                lidar_viz[:, 1],
                 s=radius,
                 c="white",
             )
@@ -253,8 +303,19 @@ def visualize_lidar(
     if bboxes is not None and len(bboxes) > 0:
         coords = bboxes.corners[:, [0, 3, 7, 4, 0], :2]
 
+        # Convert to numpy if it's a tensor
+        if hasattr(coords, 'cpu'):
+            coords = coords.cpu().numpy()
+        else:
+            coords = np.array(coords)
+
+        if flip_y:
+            coords[:, :, 1] = -coords[:, :, 1]
+
         for index in range(coords.shape[0]):
             name = classes[labels[index]]
+
+            # Draw bbox edges
             if swap_xy:
                 # Swap X and Y for bbox corners too
                 plt.plot(
@@ -267,6 +328,41 @@ def visualize_lidar(
                 plt.plot(
                     coords[index, :, 0],
                     coords[index, :, 1],
+                    linewidth=thickness,
+                    color=np.array(color or OBJECT_PALETTE[name]) / 255,
+                )
+
+            # Draw heading line (like truckscenes render_box)
+            # Get full corners (not just the 5-point outline)
+            full_corners = bboxes.corners[index, :, :2]
+            if hasattr(full_corners, 'cpu'):
+                full_corners = full_corners.cpu().numpy()
+            else:
+                full_corners = np.array(full_corners)
+
+            if flip_y:
+                full_corners[:, 1] = -full_corners[:, 1]
+
+            # BEVFusion corner indices:
+            # (x0y0z0, x0y0z1, x0y1z1, x0y1z0, x1y0z0, x1y0z1, x1y1z1, x1y1z0)
+            # Outline drawn as: [0, 3, 7, 4, 0]
+            # Try: front face is 0-4 edge
+            center_bottom = full_corners[[0, 3, 4, 7]].mean(axis=0)
+            center_bottom_forward = full_corners[[0, 4]].mean(axis=0)
+
+            if swap_xy:
+                # Line from center to front (same style as bbox)
+                plt.plot(
+                    [center_bottom[1], center_bottom_forward[1]],  # Y coords
+                    [center_bottom[0], center_bottom_forward[0]],  # X coords
+                    linewidth=thickness,
+                    color=np.array(color or OBJECT_PALETTE[name]) / 255,
+                )
+            else:
+                # Line from center to front (same style as bbox)
+                plt.plot(
+                    [center_bottom[0], center_bottom_forward[0]],  # X coords
+                    [center_bottom[1], center_bottom_forward[1]],  # Y coords
                     linewidth=thickness,
                     color=np.array(color or OBJECT_PALETTE[name]) / 255,
                 )

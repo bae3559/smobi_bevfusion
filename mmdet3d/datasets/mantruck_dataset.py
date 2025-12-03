@@ -64,7 +64,7 @@ class MANTruckScenesDataset(Custom3DDataset):
         "vehicle.bicycle" :"bicycle",
         "vehicle.bus.rigid": "bus",
         "vehicle.car" :"car",
-        "vehicle.construction": "trailer",
+        "vehicle.construction": "other_vehicle",
         "vehicle.ego_trailer" :"trailer",
         "vehicle.motorcycle": "motorcycle",
         "vehicle.other": "other_vehicle",
@@ -430,7 +430,7 @@ class MANTruckScenesDataset(Custom3DDataset):
                     attribute_name=attr,
                 )
                 annos.append(trucks_anno)
-            trucks_anno[sample_token] = annos
+            trucks_annos[sample_token] = annos
         trucks_submissions = {
             "meta": self.modality,
             "results": trucks_annos,

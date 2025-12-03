@@ -13,14 +13,14 @@ from typing import List, Tuple, Union
 from mmdet3d.core.bbox.box_np_ops import points_cam2img
 # from mmdet3d.datasets import NuScenesDataset
 from mmdet3d.datasets import MANTruckScenesDataset
-nus_categories = ('car', 'truck', 'trailer', 'bus', 'construction_vehicle',
-                  'bicycle', 'motorcycle', 'pedestrian', 'traffic_cone',
-                  'barrier')
+# nus_categories = ('car', 'truck', 'trailer', 'bus', 'construction_vehicle',
+#                   'bicycle', 'motorcycle', 'pedestrian', 'traffic_cone',
+#                   'barrier')
 
-nus_attributes = ('cycle.with_rider', 'cycle.without_rider',
-                  'pedestrian.moving', 'pedestrian.standing',
-                  'pedestrian.sitting_lying_down', 'vehicle.moving',
-                  'vehicle.parked', 'vehicle.stopped', 'None')
+# nus_attributes = ('cycle.with_rider', 'cycle.without_rider',
+#                   'pedestrian.moving', 'pedestrian.standing',
+#                   'pedestrian.sitting_lying_down', 'vehicle.moving',
+#                   'vehicle.parked', 'vehicle.stopped', 'None')
 
 truck_categories = ('car', 'traffic_sign', 'truck', 'trailer', 'trafficcone', 
                     'ego_trailer', 'adult', 'vehicle_other', 'bus_rigid', )
@@ -31,11 +31,11 @@ truck_attributes = ('cycle.with_rider', 'cycle.without_rider',
                   'vehicle.parked', 'vehicle.stopped', 'traffic_sign.pole_mounted',
                   'traffic_sign.temporary','traffic_sign.overhanging','None')
 
-def load_and_merge_lidar_sensors(trucks, sample, main_lidar_name='LIDAR_TOP_FRONT'):
+def load_and_merge_lidar_sensors(trucks, sample, main_lidar_name='LIDAR_LEFT'):
     """Load and merge all LiDAR sensors using TruckScenes from_file_multisweep.
 
     Args:
-        nusc: TruckScenes instance
+        trucks: TruckScenes instance
         sample: Sample dict
         main_lidar_name: Name of main/reference LiDAR sensor
 
@@ -92,7 +92,7 @@ def load_and_merge_lidar_sensors(trucks, sample, main_lidar_name='LIDAR_TOP_FRON
 
     # Create merged file path
     main_token = sample['data'][main_lidar_name]
-    main_path = nusc.get_sample_data_path(main_token)
+    main_path = trucks.get_sample_data_path(main_token)
     merged_path = str(main_path).replace('.pcd', '_merged.bin')
 
     return merged_points, merged_path
@@ -102,7 +102,7 @@ def create_mantruck_infos(root_path,
                           version='v1.0-trainval',
                           max_sweeps=10, 
                           max_radar_sweeps=10):
-    """Create info file of nuscene dataset.
+    """Create info file of truckscenes dataset.
     Given the raw data, generate its related info file in pkl format.
     Args:
         root_path (str): Path of the data root.
@@ -177,11 +177,11 @@ def create_mantruck_infos(root_path,
 
 
 def get_available_scenes(trucks):
-    """Get available scenes from the input nuscenes class.
+    """Get available scenes from the input truckScenes class.
     Given the raw data, get the information of available scenes for
     further info generation.
     Args:
-        nusc (class): Dataset class in the nuScenes dataset.
+        trucks (class): Dataset class in the truckScenes dataset.
     Returns:
         available_scenes (list[dict]): List of basic information for the
             available scenes.
@@ -192,7 +192,7 @@ def get_available_scenes(trucks):
         scene_token = scene['token']
         scene_rec = trucks.get('scene', scene_token)
         sample_rec = trucks.get('sample', scene_rec['first_sample_token'])
-        sd_rec = trucks.get('sample_data', sample_rec['data']['LIDAR_TOP_FRONT'])
+        sd_rec = trucks.get('sample_data', sample_rec['data']['LIDAR_LEFT'])
         has_more_frames = True
         scene_not_exist = False
         while has_more_frames:
@@ -222,7 +222,7 @@ def _fill_trainval_infos(trucks,
                          max_radar_sweeps=10):
     """Generate the train/val infos from the raw data.
     Args:
-        nusc (:obj:`NuScenes`): Dataset class in the nuScenes dataset.
+        trucks (:obj:`TruckScenes`): Dataset class in the truckScenes dataset.
         train_scenes (list[str]): Basic information of training scenes.
         val_scenes (list[str]): Basic information of validation scenes.
         test (bool): Whether use the test mode. In the test mode, no
@@ -329,7 +329,7 @@ def _fill_trainval_infos(trucks,
         # obtain sweeps for a single key-frame
         # Note: All spatial LiDARs are already merged in the main lidar_path
         # So we only need temporal sweeps here
-        sd_rec = trucks.get('sample_data', sample['data']['LIDAR_TOP_FRONT'])
+        sd_rec = trucks.get('sample_data', sample['data']['LIDAR_LEFT'])
         sweeps = []
         while len(sweeps) < max_sweeps:
             if not sd_rec['prev'] == '':
@@ -418,7 +418,7 @@ def obtain_sensor2top(trucks,
                       sensor_type='lidar'):
     """Obtain the info with RT matric from general sensor to Top LiDAR.
     Args:
-        nusc (class): Dataset class in the nuScenes dataset.
+        trucks (class): Dataset class in the truckScenes dataset.
         sensor_token (str): Sample data token corresponding to the
             specific sensor type.
         l2e_t (np.ndarray): Translation from lidar to ego in shape (1, 3).

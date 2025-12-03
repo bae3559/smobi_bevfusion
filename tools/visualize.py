@@ -221,7 +221,8 @@ def main() -> None:
                 labels = labels[indices]
 
             bboxes[..., 2] -= bboxes[..., 5] / 2
-            bboxes = LiDARInstance3DBoxes(bboxes, box_dim=9)
+            #mantruck은 origin (0.5,0.5,-0.5)
+            bboxes = LiDARInstance3DBoxes(bboxes, box_dim=9, origin=(0.5,0.5, -0.5))
         else:
             bboxes = None
             labels = None
@@ -250,6 +251,13 @@ def main() -> None:
                 camera_output_path = os.path.join(args.out_dir, f"camera-{k}", f"{name}.png")
                 camera_image_paths.append(camera_output_path)
 
+                # Debug: print first bbox and transform for camera 0
+                if k == 0 and len(bboxes) > 0 and i < 3:
+                    print(f"\n[DEBUG] Sample {i}, Camera {k} ({os.path.basename(os.path.dirname(image_path))}):")
+                    print(f"  First bbox center (LiDAR coords): X={bboxes.tensor[0, 0]:.2f}, Y={bboxes.tensor[0, 1]:.2f}, Z={bboxes.tensor[0, 2]:.2f}")
+                    print(f"  (X=forward, Y=left, Z=up in LiDAR frame)")
+                    print(f"  Camera: {os.path.basename(os.path.dirname(image_path))}")
+
                 visualize_camera(
                     camera_output_path,
                     image,
@@ -274,10 +282,15 @@ def main() -> None:
 
             lidar_image_path = os.path.join(args.out_dir, "lidar", f"{name}.png")
 
-            # Check if we need to swap X/Y for mantruck dataset
-            swap_xy = (dataset_type == "nuscenes" and
-                      hasattr(cfg, 'dataset_type') and
-                      'mantruck' in cfg.dataset_type.lower())
+            # Check if we need to swap X/Y or flip Y for mantruck dataset
+            is_mantruck = (dataset_type == "nuscenes" and
+                          hasattr(cfg, 'dataset_type') and
+                          'mantruck' in cfg.dataset_type.lower())
+            swap_xy = False  # Don't swap, mantruck uses same X=forward, Y=left as nuScenes
+            flip_y = not is_mantruck  # TEST: Flip for non-mantruck datasets instead
+
+            print(f"[DEBUG] dataset_type={dataset_type}, cfg.dataset_type={getattr(cfg, 'dataset_type', 'N/A')}")
+            print(f"[DEBUG] is_mantruck={is_mantruck}, flip_y={flip_y} (reversed for testing)")
 
             visualize_lidar(
                 lidar_image_path,
@@ -288,6 +301,7 @@ def main() -> None:
                 ylim=[cfg.point_cloud_range[d] for d in [1, 4]],
                 classes=cfg.object_classes,
                 swap_xy=swap_xy,
+                flip_y=flip_y,
             )
 
         # Create collage if we have both camera and lidar images
