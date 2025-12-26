@@ -141,7 +141,9 @@ work_dirs/*
 viz_waymo_train_result/
 .dist_test/
 mantruck/
-
+cat_samples/
+cat_samples_2/
+ego_trailer_all/
 
 *.pem
 *.pub
